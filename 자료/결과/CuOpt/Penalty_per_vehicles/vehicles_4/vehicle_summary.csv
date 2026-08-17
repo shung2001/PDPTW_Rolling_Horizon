@@ -1,0 +1,5 @@
+﻿vehicle_id,home_depot,final_node,final_available_time,final_remaining_range_km,total_flight_time_min,total_flight_distance_km,passenger_flight_distance_km,empty_flight_distance_km,charging_time_min,pickup_count,delivery_count
+0,1,1,1105,76.25,557,1636.73,1546.93,89.8,470,39,39
+1,2,2,1120,43.889,562,1660.93,1334.99,325.94,490,34,34
+2,3,3,1101,111.108,574,1564.31,1365.71,198.6,445,41,41
+3,4,4,1094,45.264,582,1732.28,1559.25,173.03,432,40,40
