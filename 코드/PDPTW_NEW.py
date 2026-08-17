@@ -540,22 +540,78 @@ def batch_dataframe(batches: dict[str, BatchState], maximum_max_wait: int) -> pd
     return pd.DataFrame(rows)
 
 
-def occupancy_dataframe(route_df: pd.DataFrame, nodes: dict[str, NodeInfo]) -> pd.DataFrame:
-    """Preserve the legacy minute-level vertiport occupancy output."""
-    rows: list[dict[str, Any]] = []
+def occupancy_dataframe(route_df: pd.DataFrame, nodes: dict[str, NodeInfo], vehicles: list[VehicleState]) -> pd.DataFrame:
+    """Preserve the minute-level vertiport occupancy output using each vehicle's physical location."""
+    # [추가 수정 3] 각 Vehicle을 t=0의 home_depot에서 시작시키고 Movement 구간만 비행 중으로 제외하여,
+    # Stay / Pickup / Delivery / 별도 로그가 없는 단순 대기까지 포함한 실제 노드별 물리적 차량 수를 계산한다.
+    columns = ["time_min", "time_hhmm", "route_node_id", "physical_node_id", "physical_address", "vehicle_count", "vehicle_ids"]
+
+    if not vehicles:
+        return pd.DataFrame(columns=columns)
+
     if route_df.empty:
-        return pd.DataFrame(columns=["time_min", "time_hhmm", "route_node_id", "physical_node_id", "physical_address", "vehicle_count", "vehicle_ids"])
-    stops = route_df[route_df["event"].isin(["Pickup", "Delivery"])]
-    for _, row in stops.iterrows():
-        for minute in range(int(row["arrival_time"]), int(row["departure_time"])):
-            rows.append({"time_min": minute, "route_node_id": str(row["to_node"]), "vehicle_id": int(row["vehicle_id"])})
+        end_time = 0
+    else:
+        end_time = int(max(route_df["arrival_time"].max(), route_df["departure_time"].max()))
+
+    if vehicles:
+        end_time = max(end_time, max(int(v.available_time) for v in vehicles))
+
+    rows: list[dict[str, Any]] = []
+
+    for state in vehicles:
+        current_node = state.home_depot
+        current_time = 0
+
+        if route_df.empty:
+            movements = pd.DataFrame()
+        else:
+            movements = route_df[
+                (route_df["vehicle_id"] == state.vehicle_id)
+                & (route_df["event"] == "Movement")
+            ].sort_values(["departure_time", "arrival_time"])
+
+        for _, movement in movements.iterrows():
+            departure = int(movement["departure_time"])
+            arrival = int(movement["arrival_time"])
+
+            # 출발 직전까지는 현재 노드에 물리적으로 존재한다.
+            for minute in range(current_time, departure):
+                rows.append({
+                    "time_min": minute,
+                    "route_node_id": str(current_node),
+                    "vehicle_id": state.vehicle_id,
+                })
+
+            # [departure, arrival) 동안은 비행 중이므로 어떤 노드에도 포함하지 않는다.
+            current_node = str(movement["to_node"])
+            current_time = arrival
+
+        # 마지막 도착 이후 시뮬레이션 종료 시각까지 현재 노드에 계속 존재한다.
+        for minute in range(current_time, end_time + 1):
+            rows.append({
+                "time_min": minute,
+                "route_node_id": str(current_node),
+                "vehicle_id": state.vehicle_id,
+            })
+
     if not rows:
-        return pd.DataFrame(columns=["time_min", "time_hhmm", "route_node_id", "physical_node_id", "physical_address", "vehicle_count", "vehicle_ids"])
-    result = pd.DataFrame(rows).groupby(["time_min", "route_node_id"], as_index=False).agg(vehicle_count=("vehicle_id", "nunique"), vehicle_ids=("vehicle_id", lambda values: ",".join(map(str, sorted(set(values))))))
+        return pd.DataFrame(columns=columns)
+
+    result = (
+        pd.DataFrame(rows)
+        .groupby(["time_min", "route_node_id"], as_index=False)
+        .agg(
+            vehicle_count=("vehicle_id", "nunique"),
+            vehicle_ids=("vehicle_id", lambda values: ",".join(map(str, sorted(set(values))))),
+        )
+    )
     result["time_hhmm"] = result["time_min"].map(format_hhmm)
     result["physical_node_id"] = result["route_node_id"].map(lambda value: nodes[value].physical_node_id)
     result["physical_address"] = result["route_node_id"].map(lambda value: nodes[value].address)
-    return result[["time_min", "time_hhmm", "route_node_id", "physical_node_id", "physical_address", "vehicle_count", "vehicle_ids"]]
+    # [추가 수정 3 끝] 기존 CSV 열 구조는 유지하고 vehicle_count의 의미만 '서비스 중 차량 수'에서
+    # '해당 시각에 해당 노드에 실제로 존재하는 차량 수'로 변경한다.
+    return result[columns]
 
 
 def vehicle_summary_dataframe(route_df: pd.DataFrame, vehicles: list[VehicleState]) -> pd.DataFrame:
@@ -773,7 +829,9 @@ def main() -> None:
     save_csv(route_output_df, "vehicle_route_legs.csv")
     save_csv(pd.DataFrame(plans), "rolling_horizon_plan_history.csv")
     save_csv(pd.DataFrame(summaries), "rolling_horizon_summary.csv")
-    save_csv(occupancy_dataframe(route_df, nodes), "node_vehicle_occupancy_by_minute.csv")
+    # [추가 수정 4] 물리적 차량 위치 복원을 위해 초기 home_depot 정보가 있는 vehicles를 함께 전달한다.
+    save_csv(occupancy_dataframe(route_df, nodes, vehicles), "node_vehicle_occupancy_by_minute.csv")
+    # [추가 수정 4 끝] 출력 파일명과 다른 출력 로직은 그대로 유지한다.
     save_csv(vehicle_summary_dataframe(route_df, vehicles), "vehicle_summary.csv")
     print(f"Complete={sum(b.status == 'Complete' for b in batches.values()):,}, Overdue={sum(b.status == 'Overdue' for b in batches.values()):,}")
     print(f"runtime={time.perf_counter() - started:.2f}s, output={OUTPUT_DIR}")
