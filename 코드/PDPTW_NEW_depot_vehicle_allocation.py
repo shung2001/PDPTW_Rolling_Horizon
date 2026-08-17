@@ -18,34 +18,38 @@ from ortools.constraint_solver import pywrapcp, routing_enums_pb2
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 INPUT_DIR = PROJECT_DIR / "자료" / "기초자료"
-REQUEST_PATH = INPUT_DIR / "finalDemand_v5" / "finalDemand_v5" / "d5000_s20.csv"
+REQUEST_PATH = INPUT_DIR / "finalDemand_v5" / "finalDemand_v5" / "d5000_s01.csv"
 DISTANCE_MATRIX_PATH = INPUT_DIR / "distance_matrix_km.csv"
 TIME_MATRIX_PATH = INPUT_DIR / "flight_time_matrix_min.csv"
 NODE_REFERENCE_PATH = INPUT_DIR / "vp_reference.csv"
 TRANSPORTATION_MATRIX_PATH = PROJECT_DIR / "자료" / "결과" / "차량_교통수단" /"public_transit_time_matrix_min.csv"
-OUTPUT_DIR = PROJECT_DIR / "자료" / "결과" / "Ortools" / "NEW"
+OUTPUT_DIR = PROJECT_DIR / "자료" / "결과" / "Ortools" / "S1_1"
 
 BASE_TIME = "05:40"
-NUM_VEHICLES = 57
+NUM_VEHICLES = 165
 VEHICLE_CAPACITY = 3
 DEPOT_ROUTE_NODE_IDS = list(range(1, 11))
-""""""  # 변경 시작: None이면 기존처럼 Depot에 차량을 순환 균등배치하고, dict를 지정하면 Depot별 초기 차량 대수를 직접 설정한다. 예: NUM_VEHICLES=40, DEPOT_VEHICLE_COUNTS={1: 10, 2: 30}
+
+# [추가 수정 1] Depot별 초기 차량 대수를 직접 지정한다.
+# None으로 설정하면 기존 코드와 동일하게 DEPOT_ROUTE_NODE_IDS 순서로 round-robin 배치한다.
+# dict를 사용할 경우 각 값의 합은 반드시 NUM_VEHICLES와 같아야 한다.
 DEPOT_VEHICLE_COUNTS = {
-    1: 7,   # 서울역
-    2: 5,   # 수서
-    3: 7,   # 삼성
-    4: 6,   # 여의도
-    5: 5,   # 김포공항
-    6: 10,   # 일산
-    7: 5,   # 판교
-    8: 4,   # 동탄/용인
-    9: 3,   # 평택
-    10: 5,  # 인천공항
+    1: 19,   # 서울역
+    2: 21,   # 수서
+    3: 20,   # 삼성
+    4: 28,   # 여의도
+    5: 13,   # 김포공항
+    6: 15,   # 일산
+    7: 16,   # 판교
+    8: 6,    # 동탄/용인
+    9: 14,   # 평택
+    10: 13,  # 인천공항
 }
-""""""  # 변경 끝: custom 배치를 사용할 때 dict의 차량 대수 합은 NUM_VEHICLES와 같아야 한다.
+# [추가 수정 1 끝] 위 숫자만 변경하면 Depot별 초기 차량 대수를 조정할 수 있다.
+
 ROLLING_HORIZON_MINUTES = 30
 REOPTIMIZATION_INTERVAL_MINUTES = 20
-TIME_LIMIT_SECONDS = 30
+TIME_LIMIT_SECONDS = 100
 
 SERVICE_TIME_MINUTES = 3
 BOARDING_CHARGE_MINUTES = 2
@@ -548,7 +552,9 @@ def batch_dataframe(batches: dict[str, BatchState], maximum_max_wait: int) -> pd
     rows = []
     for batch in batches.values():
         selected = next((t for t in batch.alternatives if t.request_id == batch.selected_request_id), batch.alternatives[0])
-        rows.append({"batch_id": batch.batch_id, "selected_request_id": batch.selected_request_id, "origin": selected.origin, "destination": selected.destination, "max_wait": selected.max_wait_min, "Transportation_min": selected.transportation_min, "Joby_min": selected.joby_min, "Transportation_Joby_time_saving": selected.transportation_min - selected.joby_min, "pending_count": batch.pending_count, "final_drop_penalty": drop_penalty(batch, maximum_max_wait), "assigned_vehicle": batch.assigned_vehicle_id, "pickup_time": batch.pickup_time, "pickup_time_hhmm": format_hhmm(batch.pickup_time), "delivery_time": batch.delivery_time, "delivery_time_hhmm": format_hhmm(batch.delivery_time), "final_status": batch.status})
+        # [추가 수정 1] rolling_horizon_request_status.csv에 각 Request의 원래 Delivery Time Window를 분 단위와 HH:MM 형식으로 함께 출력한다.
+        rows.append({"batch_id": batch.batch_id, "selected_request_id": batch.selected_request_id, "origin": selected.origin, "destination": selected.destination, "max_wait": selected.max_wait_min, "time_window_start": selected.arrival_time, "time_window_start_hhmm": format_hhmm(selected.arrival_time), "time_window_end": selected.window_end, "time_window_end_hhmm": format_hhmm(selected.window_end), "Transportation_min": selected.transportation_min, "Joby_min": selected.joby_min, "Transportation_Joby_time_saving": selected.transportation_min - selected.joby_min, "pending_count": batch.pending_count, "final_drop_penalty": drop_penalty(batch, maximum_max_wait), "assigned_vehicle": batch.assigned_vehicle_id, "pickup_time": batch.pickup_time, "pickup_time_hhmm": format_hhmm(batch.pickup_time), "delivery_time": batch.delivery_time, "delivery_time_hhmm": format_hhmm(batch.delivery_time), "final_status": batch.status})
+        # [추가 수정 1 끝] time_window_start=arrival_time, time_window_end=arrival_time+max_wait이며 기존 계산/상태/패널티 로직은 변경하지 않는다.
     return pd.DataFrame(rows)
 
 
@@ -603,26 +609,38 @@ def main() -> None:
     """변경 시작: 마지막 Rolling Horizon에서 최초 home_depot으로 복귀하기 위한 기준 시각"""
     latest_window_end = max(t.window_end for t in tasks)
     """변경 끝"""
-    """"""  # 변경 시작: DEPOT_VEHICLE_COUNTS가 지정되면 Depot별 초기 차량 대수를 사용하고, None이면 기존 round-robin 배치를 그대로 사용한다.
+    # [추가 수정 2] DEPOT_VEHICLE_COUNTS가 지정되면 Depot별 초기 차량 대수를 사용하고,
+    # None이면 기존 round-robin 초기 배치를 그대로 사용한다.
     if DEPOT_VEHICLE_COUNTS is None:
         vehicles = [VehicleState(i, depots[i % len(depots)], depots[i % len(depots)]) for i in range(NUM_VEHICLES)]
     else:
         depot_vehicle_counts = {normalize_id(depot): int(count) for depot, count in DEPOT_VEHICLE_COUNTS.items()}
+
         unknown_depots = [depot for depot in depot_vehicle_counts if depot not in depots]
         if unknown_depots:
-            raise ValueError(f"DEPOT_VEHICLE_COUNTS에 DEPOT_ROUTE_NODE_IDS에 없는 Depot이 있습니다: {unknown_depots}")
+            raise ValueError(
+                f"DEPOT_VEHICLE_COUNTS에 DEPOT_ROUTE_NODE_IDS에 없는 Depot이 있습니다: {unknown_depots}"
+            )
+
         if any(count < 0 for count in depot_vehicle_counts.values()):
             raise ValueError("DEPOT_VEHICLE_COUNTS의 차량 대수는 0 이상이어야 합니다")
+
         if sum(depot_vehicle_counts.values()) != NUM_VEHICLES:
-            raise ValueError(f"DEPOT_VEHICLE_COUNTS 합계({sum(depot_vehicle_counts.values())})가 NUM_VEHICLES({NUM_VEHICLES})와 일치해야 합니다")
+            raise ValueError(
+                f"DEPOT_VEHICLE_COUNTS 합계({sum(depot_vehicle_counts.values())})가 "
+                f"NUM_VEHICLES({NUM_VEHICLES})와 일치해야 합니다"
+            )
 
         vehicles = []
         vehicle_id = 0
+
         for depot in depots:
             for _ in range(depot_vehicle_counts.get(depot, 0)):
                 vehicles.append(VehicleState(vehicle_id, depot, depot))
                 vehicle_id += 1
-    """"""  # 변경 끝: 각 Vehicle의 home_depot과 초기 route_node_id를 지정된 Depot으로 설정한다.
+    # [추가 수정 2 끝] VehicleState의 home_depot과 초기 route_node_id만 사용자가 지정한 배치로 생성하며,
+    # 이후 Rolling Horizon / Solver / 복귀 로직은 기존 코드를 그대로 사용한다.
+
     logs, plans, summaries = [], [], []
     simulation_end = max(t.window_end for t in tasks) + int(flight_time.to_numpy().max()) + SERVICE_TIME_MINUTES
     horizon_starts = range(0, simulation_end + 1, REOPTIMIZATION_INTERVAL_MINUTES)
@@ -678,7 +696,10 @@ def main() -> None:
             objective = None if solution is None else int(solution.ObjectiveValue())
             committed = commit_routes(routes, vehicles, distance, flight_time, nodes, commit_end, logs, batches)
             for task in active:
-                plans.append({"horizon_start": hs, "horizon_end": he, "request_id": task.request_id, "batch_id": task.batch_id, "planned_visit": task.task_key in selected, "drop_penalty": drop_penalty(batches[task.batch_id], maximum_max_wait)})
+                """"""  # 변경 시작: planned_visit가 단순 계획인지 실제 Commit인지 구분할 수 있도록 planned Pickup 시각과 committed 여부를 plan history에 추가한다.
+                planned_pickup_time = next((int(row["time"]) for row in routes if row["event"] == "Pickup" and row["task"].task_key == task.task_key), None)
+                plans.append({"horizon_start": hs, "horizon_end": he, "request_id": task.request_id, "batch_id": task.batch_id, "planned_visit": task.task_key in selected, "planned_pickup_time": planned_pickup_time, "committed": planned_pickup_time is not None and planned_pickup_time < commit_end, "drop_penalty": drop_penalty(batches[task.batch_id], maximum_max_wait)})
+                """"""  # 변경 끝: committed=True는 해당 Pickup 계획시각이 현재 RH의 commit_end보다 앞서 실제 확정 대상이 된 경우를 의미한다.
         elif LOG_ROLLING_HORIZON:
             print("활성 Request가 없어 Solver 실행을 건너뜁니다.", flush=True)
 
@@ -809,3 +830,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
