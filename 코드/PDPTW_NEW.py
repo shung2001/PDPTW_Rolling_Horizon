@@ -23,15 +23,15 @@ DISTANCE_MATRIX_PATH = INPUT_DIR / "distance_matrix_km.csv"
 TIME_MATRIX_PATH = INPUT_DIR / "flight_time_matrix_min.csv"
 NODE_REFERENCE_PATH = INPUT_DIR / "vp_reference.csv"
 TRANSPORTATION_MATRIX_PATH = PROJECT_DIR / "자료" / "결과" / "차량_교통수단" /"public_transit_time_matrix_min.csv"
-OUTPUT_DIR = PROJECT_DIR / "자료" / "결과" / "Ortools" / "S1"
+OUTPUT_DIR = PROJECT_DIR / "자료" / "결과" / "Ortools" / "S1_1"
 
 BASE_TIME = "05:40"
-NUM_VEHICLES = 251
+NUM_VEHICLES = 165
 VEHICLE_CAPACITY = 3
 DEPOT_ROUTE_NODE_IDS = list(range(1, 11))
 ROLLING_HORIZON_MINUTES = 30
 REOPTIMIZATION_INTERVAL_MINUTES = 20
-TIME_LIMIT_SECONDS = 5
+TIME_LIMIT_SECONDS = 120
 
 SERVICE_TIME_MINUTES = 3
 BOARDING_CHARGE_MINUTES = 2
@@ -645,7 +645,10 @@ def main() -> None:
             objective = None if solution is None else int(solution.ObjectiveValue())
             committed = commit_routes(routes, vehicles, distance, flight_time, nodes, commit_end, logs, batches)
             for task in active:
-                plans.append({"horizon_start": hs, "horizon_end": he, "request_id": task.request_id, "batch_id": task.batch_id, "planned_visit": task.task_key in selected, "drop_penalty": drop_penalty(batches[task.batch_id], maximum_max_wait)})
+                """"""  # 변경 시작: planned_visit가 단순 계획인지 실제 Commit인지 구분할 수 있도록 planned Pickup 시각과 committed 여부를 plan history에 추가한다.
+                planned_pickup_time = next((int(row["time"]) for row in routes if row["event"] == "Pickup" and row["task"].task_key == task.task_key), None)
+                plans.append({"horizon_start": hs, "horizon_end": he, "request_id": task.request_id, "batch_id": task.batch_id, "planned_visit": task.task_key in selected, "planned_pickup_time": planned_pickup_time, "committed": planned_pickup_time is not None and planned_pickup_time < commit_end, "drop_penalty": drop_penalty(batches[task.batch_id], maximum_max_wait)})
+                """"""  # 변경 끝: committed=True는 해당 Pickup 계획시각이 현재 RH의 commit_end보다 앞서 실제 확정 대상이 된 경우를 의미한다.
         elif LOG_ROLLING_HORIZON:
             print("활성 Request가 없어 Solver 실행을 건너뜁니다.", flush=True)
 
@@ -776,3 +779,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
