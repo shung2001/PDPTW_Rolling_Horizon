@@ -23,18 +23,29 @@ DISTANCE_MATRIX_PATH = INPUT_DIR / "distance_matrix_km.csv"
 TIME_MATRIX_PATH = INPUT_DIR / "flight_time_matrix_min.csv"
 NODE_REFERENCE_PATH = INPUT_DIR / "vp_reference.csv"
 TRANSPORTATION_MATRIX_PATH = PROJECT_DIR / "자료" / "결과" / "차량_교통수단" /"public_transit_time_matrix_min.csv"
-OUTPUT_DIR = PROJECT_DIR / "자료" / "결과" / "Ortools"
+OUTPUT_DIR = PROJECT_DIR / "자료" / "결과" / "Ortools" / "NEW"
 
 BASE_TIME = "05:40"
-NUM_VEHICLES = 251
+NUM_VEHICLES = 57
 VEHICLE_CAPACITY = 3
 DEPOT_ROUTE_NODE_IDS = list(range(1, 11))
 """"""  # 변경 시작: None이면 기존처럼 Depot에 차량을 순환 균등배치하고, dict를 지정하면 Depot별 초기 차량 대수를 직접 설정한다. 예: NUM_VEHICLES=40, DEPOT_VEHICLE_COUNTS={1: 10, 2: 30}
-DEPOT_VEHICLE_COUNTS: dict[int, int] | None = None
+DEPOT_VEHICLE_COUNTS = {
+    1: 7,   # 서울역
+    2: 5,   # 수서
+    3: 7,   # 삼성
+    4: 6,   # 여의도
+    5: 5,   # 김포공항
+    6: 10,   # 일산
+    7: 5,   # 판교
+    8: 4,   # 동탄/용인
+    9: 3,   # 평택
+    10: 5,  # 인천공항
+}
 """"""  # 변경 끝: custom 배치를 사용할 때 dict의 차량 대수 합은 NUM_VEHICLES와 같아야 한다.
 ROLLING_HORIZON_MINUTES = 30
 REOPTIMIZATION_INTERVAL_MINUTES = 20
-TIME_LIMIT_SECONDS = 5
+TIME_LIMIT_SECONDS = 30
 
 SERVICE_TIME_MINUTES = 3
 BOARDING_CHARGE_MINUTES = 2

@@ -17,8 +17,8 @@ import PDPTW_NEW as pdptw
 
 
 CONFIG = {
-    "min": 51,
-    "max": 100,
+    "min": 101,
+    "max": 170,
 }
 
 SWEEP_OUTPUT_DIR = pdptw.OUTPUT_DIR / "Penalty_per_vehicles"
