@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pandas as pd
 
-import 코드.PDPTW_main.PDPTW_NEW_Remove_Pending as pdptw
+import PDPTW_NEW_Remove_Pending as pdptw
 
 
 CONFIG = {
