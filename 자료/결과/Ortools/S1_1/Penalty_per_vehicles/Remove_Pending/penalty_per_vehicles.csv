@@ -1,2 +1,3 @@
 ﻿num_vehicles,total_penalty,complete_batch_count,overdue_batch_count,total_batch_count,runtime_seconds,output_directory
 50,3321157900,1990,2258,4248,1103.444,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\S1_1\Penalty_per_vehicles\Remove_Pending\vehicles_50
+55,3019003300,2185,2063,4248,1104.094,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\S1_1\Penalty_per_vehicles\Remove_Pending\vehicles_55
