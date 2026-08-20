@@ -16,28 +16,27 @@ import pandas as pd
 from ortools.constraint_solver import pywrapcp, routing_enums_pb2
 
 
-PROJECT_DIR = Path(__file__).resolve().parents[1]
+PROJECT_DIR = Path(__file__).resolve().parents[2]
 INPUT_DIR = PROJECT_DIR / "자료" / "기초자료"
 REQUEST_PATH = INPUT_DIR / "finalDemand_v5" / "finalDemand_v5" / "d5000_s01.csv"
 DISTANCE_MATRIX_PATH = INPUT_DIR / "distance_matrix_km.csv"
-TIME_MATRIX_PATH = INPUT_DIR / "flight_time_matrix_min.csv"
+TIME_MATRIX_PATH = INPUT_DIR / "flight_time_matrix_min_remove_fuel.csv"
 NODE_REFERENCE_PATH = INPUT_DIR / "vp_reference.csv"
 TRANSPORTATION_MATRIX_PATH = PROJECT_DIR / "자료" / "결과" / "차량_교통수단" /"public_transit_time_matrix_min.csv"
 OUTPUT_DIR = PROJECT_DIR / "자료" / "결과" / "Ortools" / "S1_1"
 
 BASE_TIME = "05:40"
-NUM_VEHICLES = 165
+NUM_VEHICLES = 153
 VEHICLE_CAPACITY = 3
 DEPOT_ROUTE_NODE_IDS = list(range(1, 11))
 ROLLING_HORIZON_MINUTES = 30
 REOPTIMIZATION_INTERVAL_MINUTES = 20
-TIME_LIMIT_SECONDS = 100
+TIME_LIMIT_SECONDS = 20
 
 SERVICE_TIME_MINUTES = 3
 BOARDING_CHARGE_MINUTES = 2
 TAXI_TIME_MINUTES = 1
 BASE_DROP_PENALTY = 1_000_000
-PENDING_PENALTY_PER_COUNT = 10_000
 MAX_WAIT_PENALTY_WEIGHT = 1_000
 TRANSPORTATION_JOBY_PENALTY_WEIGHT = 10_000
 INITIAL_REMAINING_RANGE_KM = 160.0
@@ -226,7 +225,7 @@ def drop_penalty(batch: BatchState, maximum_max_wait: int) -> int:
         flight_time_matrix = load_matrix(TIME_MATRIX_PATH, False)
         setattr(drop_penalty, "_flight_time_matrix", flight_time_matrix)
     joby_min = float(flight_time_matrix.loc[representative.origin, representative.destination])
-    return int(BASE_DROP_PENALTY + PENDING_PENALTY_PER_COUNT * batch.pending_count + MAX_WAIT_PENALTY_WEIGHT * (maximum_max_wait - representative.max_wait_min) + TRANSPORTATION_JOBY_PENALTY_WEIGHT * (representative.transportation_min - joby_min))
+    return int(BASE_DROP_PENALTY + MAX_WAIT_PENALTY_WEIGHT * (maximum_max_wait - representative.max_wait_min) + TRANSPORTATION_JOBY_PENALTY_WEIGHT * (representative.transportation_min - joby_min))
 
 
 def load_tasks(request_path: Path, distance: pd.DataFrame, flight_time: pd.DataFrame, nodes: dict[str, NodeInfo], transportation_matrix: pd.DataFrame | None = None) -> tuple[list[RequestTask], dict[str, BatchState]]:
@@ -502,7 +501,7 @@ def update_batch_states(batches: dict[str, BatchState], current_time: int, incre
                 if task.status != "Complete":
                     task.status = "Overdue"
         elif increment_pending and (attempted_batch_ids is None or batch.batch_id in attempted_batch_ids):
-            batch.status = "Pending"
+            batch.status = "Pending" # Status는 유지. 이전 RH에서 Request 구간 몇 개가 누락됐는지 알 수 있으므로.
             batch.pending_count += 1
             for task in future:
                 task.pending_count = batch.pending_count

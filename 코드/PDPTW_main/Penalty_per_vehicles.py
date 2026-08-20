@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
-"""CONFIG에 지정한 차량 범위의 cuOpt PDPTW 종합 drop penalty를 비교한다.
+"""CONFIG에 지정한 차량 범위의 PDPTW 종합 drop penalty를 비교한다.
 
-종합 penalty는 최종 상태가 Overdue인 request group(batch)의
-final_drop_penalty 합계이다. Complete request group은 실제로 drop되지
-않았으므로 합계에서 제외한다.
+종합 penalty는 최종 상태가 Overdue인 batch의 final_drop_penalty 합계이다.
+Complete batch는 실제로 drop되지 않았으므로 합계에서 제외한다.
 """
 
 from __future__ import annotations
@@ -14,15 +13,16 @@ from pathlib import Path
 
 import pandas as pd
 
-import PDPTW_CUOPT as pdptw
+import 코드.PDPTW_main.PDPTW_NEW_Remove_Pending as pdptw
 
 
 CONFIG = {
-    "min": 51,
-    "max": 100,
+    "min": 100,
+    "max": 200,
+    "step": 5,
 }
 
-SWEEP_OUTPUT_DIR = pdptw.OUTPUT_DIR / "Penalty_per_vehicles"
+SWEEP_OUTPUT_DIR = pdptw.OUTPUT_DIR / "Penalty_per_vehicles" / "Remove_Pending"
 SUMMARY_PATH = SWEEP_OUTPUT_DIR / "penalty_per_vehicles.csv"
 BEST_OUTPUT_DIR = SWEEP_OUTPUT_DIR / "best_penalty"
 PDPTW_OUTPUT_FILENAMES = (
@@ -38,13 +38,16 @@ PDPTW_OUTPUT_FILENAMES = (
 def configured_vehicle_counts() -> range:
     min_vehicles = CONFIG["min"]
     max_vehicles = CONFIG["max"]
-    if type(min_vehicles) is not int or type(max_vehicles) is not int:
-        raise TypeError("CONFIG의 min과 max는 정수여야 합니다")
+    step_vehicles = CONFIG["step"]
+    if any(type(value) is not int for value in (min_vehicles, max_vehicles, step_vehicles)):
+        raise TypeError("CONFIG의 min, max, step은 정수여야 합니다")
     if min_vehicles < 0 or max_vehicles < 0:
         raise ValueError("CONFIG의 min과 max는 0 이상이어야 합니다")
     if min_vehicles > max_vehicles:
         raise ValueError("CONFIG의 min은 max보다 클 수 없습니다")
-    return range(min_vehicles, max_vehicles + 1)
+    if step_vehicles <= 0:
+        raise ValueError("CONFIG의 step은 1 이상이어야 합니다")
+    return range(min_vehicles, max_vehicles + 1, step_vehicles)
 
 
 def simulate_zero_vehicles(output_dir: Path) -> pd.DataFrame:
@@ -52,15 +55,9 @@ def simulate_zero_vehicles(output_dir: Path) -> pd.DataFrame:
     distance = pdptw.load_matrix(pdptw.DISTANCE_MATRIX_PATH, False)
     flight_time = pdptw.load_matrix(pdptw.TIME_MATRIX_PATH, True)
     nodes = pdptw.load_nodes(pdptw.NODE_REFERENCE_PATH)
-    transportation_matrix = pdptw.load_named_matrix(
-        pdptw.TRANSPORTATION_MATRIX_PATH,
-        nodes,
-    )
+    transportation_matrix = pdptw.load_named_matrix(pdptw.TRANSPORTATION_MATRIX_PATH, nodes)
 
-    if (
-        set(distance.index) != set(flight_time.index)
-        or not set(distance.index).issubset(nodes)
-    ):
+    if set(distance.index) != set(flight_time.index) or not set(distance.index).issubset(nodes):
         raise ValueError("distance/time/node-reference의 node 집합이 일치하지 않습니다")
 
     tasks, batches = pdptw.load_tasks(
@@ -95,7 +92,6 @@ def simulate_zero_vehicles(output_dir: Path) -> pd.DataFrame:
             and task.window_end >= horizon_start
         ]
         active_batch_ids = {task.batch_id for task in active}
-
         for task in active:
             plans.append(
                 {
@@ -110,7 +106,6 @@ def simulate_zero_vehicles(output_dir: Path) -> pd.DataFrame:
                     ),
                 }
             )
-
         pdptw.update_batch_states(
             batches,
             commit_end,
@@ -143,7 +138,6 @@ def simulate_zero_vehicles(output_dir: Path) -> pd.DataFrame:
     status_df = pdptw.batch_dataframe(batches, maximum_max_wait)
     route_df = pd.DataFrame()
     output_dir.mkdir(parents=True, exist_ok=True)
-
     output_frames = {
         "rolling_horizon_request_status.csv": status_df,
         "vehicle_route_legs.csv": route_df,
@@ -161,7 +155,7 @@ def simulate_zero_vehicles(output_dir: Path) -> pd.DataFrame:
 
 
 def run_vehicle_case(vehicle_count: int) -> tuple[pd.DataFrame, Path]:
-    """지정한 차량 수로 cuOpt 시뮬레이션하고 최종 request 상태를 반환한다."""
+    """지정한 차량 수로 시뮬레이션하고 최종 request 상태를 반환한다."""
     output_dir = SWEEP_OUTPUT_DIR / f"vehicles_{vehicle_count}"
 
     if vehicle_count == 0:
@@ -201,7 +195,7 @@ def summarize_penalty(
 
 
 def publish_best_result(best_result: dict[str, object]) -> None:
-    """최저 penalty 실행 결과를 별도 best_penalty 폴더로 복사한다."""
+    """최저 penalty 실행 결과를 PDPTW_NEW.py의 출력 파일명으로 복사한다."""
     source_dir = Path(str(best_result["output_directory"]))
     BEST_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     for filename in PDPTW_OUTPUT_FILENAMES:
@@ -217,7 +211,8 @@ def main() -> None:
 
     vehicle_counts = configured_vehicle_counts()
     print(
-        f"차량 수 범위: CONFIG min={CONFIG['min']}, max={CONFIG['max']}",
+        f"차량 수 범위: CONFIG min={CONFIG['min']}, max={CONFIG['max']}, "
+        f"step={CONFIG['step']}",
         flush=True,
     )
 
@@ -233,6 +228,7 @@ def main() -> None:
         )
         results.append(result)
 
+        # 각 차량 수의 계산이 끝날 때마다 저장하여 중간 결과도 보존한다.
         pd.DataFrame(results).to_csv(
             SUMMARY_PATH,
             index=False,
@@ -285,4 +281,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
