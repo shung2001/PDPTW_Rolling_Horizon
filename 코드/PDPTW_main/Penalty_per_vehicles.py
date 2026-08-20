@@ -17,7 +17,7 @@ import 코드.PDPTW_main.PDPTW_NEW_Remove_Pending as pdptw
 
 
 CONFIG = {
-    "min": 100,
+    "min": 50,
     "max": 200,
     "step": 5,
 }
