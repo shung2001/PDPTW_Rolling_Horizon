@@ -330,8 +330,8 @@ def build_horizon_model(active: list[RequestTask], batches: dict[str, BatchState
     def time_cb(fi: int, ti: int) -> int:
         f, t = manager.IndexToNode(fi), manager.IndexToNode(ti)
         if not return_to_home and vehicle_count <= t < vehicle_count * 2: # 중간구간 노드는 아예 페널티 계산 X
-            return service(f)
-        return service(f) + int(flight_time.loc[location(f), location(t)])
+            return 0
+        return int(flight_time.loc[location(f), location(t)])
 
     def distance_cb(fi: int, ti: int) -> int:
         f, t = manager.IndexToNode(fi), manager.IndexToNode(ti)
@@ -737,7 +737,6 @@ def main() -> None:
 
         seen_batch_ids.update(active_batch_ids)
     update_batch_states(batches, simulation_end + ROLLING_HORIZON_MINUTES)
-    return_to_depots(vehicles, distance, flight_time, nodes, logs)
     if any(b.status == "Pending" for b in batches.values()):
         raise RuntimeError("최종 시뮬레이션에 Pending batch가 남았습니다")
     route_df = pd.DataFrame(logs)

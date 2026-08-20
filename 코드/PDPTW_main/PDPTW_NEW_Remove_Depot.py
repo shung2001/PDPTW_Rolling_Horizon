@@ -37,6 +37,7 @@ SERVICE_TIME_MINUTES = 3
 BOARDING_CHARGE_MINUTES = 2
 TAXI_TIME_MINUTES = 1
 BASE_DROP_PENALTY = 1_000_000
+PENDING_PENALTY_PER_COUNT = 10_000
 MAX_WAIT_PENALTY_WEIGHT = 1_000
 TRANSPORTATION_JOBY_PENALTY_WEIGHT = 10_000
 INITIAL_REMAINING_RANGE_KM = 160.0
@@ -225,7 +226,7 @@ def drop_penalty(batch: BatchState, maximum_max_wait: int) -> int:
         flight_time_matrix = load_matrix(TIME_MATRIX_PATH, False)
         setattr(drop_penalty, "_flight_time_matrix", flight_time_matrix)
     joby_min = float(flight_time_matrix.loc[representative.origin, representative.destination])
-    return int(BASE_DROP_PENALTY + MAX_WAIT_PENALTY_WEIGHT * (maximum_max_wait - representative.max_wait_min) + TRANSPORTATION_JOBY_PENALTY_WEIGHT * (representative.transportation_min - joby_min))
+    return int(BASE_DROP_PENALTY + PENDING_PENALTY_PER_COUNT * batch.pending_count + MAX_WAIT_PENALTY_WEIGHT * (maximum_max_wait - representative.max_wait_min) + TRANSPORTATION_JOBY_PENALTY_WEIGHT * (representative.transportation_min - joby_min))
 
 
 def load_tasks(request_path: Path, distance: pd.DataFrame, flight_time: pd.DataFrame, nodes: dict[str, NodeInfo], transportation_matrix: pd.DataFrame | None = None) -> tuple[list[RequestTask], dict[str, BatchState]]:
@@ -501,7 +502,7 @@ def update_batch_states(batches: dict[str, BatchState], current_time: int, incre
                 if task.status != "Complete":
                     task.status = "Overdue"
         elif increment_pending and (attempted_batch_ids is None or batch.batch_id in attempted_batch_ids):
-            batch.status = "Pending" # Status는 유지. 이전 RH에서 Request 구간 몇 개가 누락됐는지 알 수 있으므로.
+            batch.status = "Pending"
             batch.pending_count += 1
             for task in future:
                 task.pending_count = batch.pending_count
