@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pandas as pd
 
-import PDPTW_NEW_Remove_Pending as pdptw
+import PDPTW_NEW_Remove_Depot as pdptw
 
 
 CONFIG = {
@@ -22,7 +22,7 @@ CONFIG = {
     "step": 5,
 }
 
-SWEEP_OUTPUT_DIR = pdptw.OUTPUT_DIR / "Penalty_per_vehicles" / "Remove_Pending"
+SWEEP_OUTPUT_DIR = pdptw.OUTPUT_DIR / "Penalty_per_vehicles" / "Remove_depot"
 SUMMARY_PATH = SWEEP_OUTPUT_DIR / "penalty_per_vehicles.csv"
 BEST_OUTPUT_DIR = SWEEP_OUTPUT_DIR / "best_penalty"
 PDPTW_OUTPUT_FILENAMES = (
