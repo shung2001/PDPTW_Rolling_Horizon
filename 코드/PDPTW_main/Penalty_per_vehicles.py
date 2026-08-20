@@ -13,15 +13,16 @@ from pathlib import Path
 
 import pandas as pd
 
-import 코드.PDPTW_main.PDPTW_NEW as pdptw
+import 코드.PDPTW_main.PDPTW_NEW_Remove_Pending as pdptw
 
 
 CONFIG = {
-    "min": 101,
-    "max": 170,
+    "min": 100,
+    "max": 200,
+    "step": 5,
 }
 
-SWEEP_OUTPUT_DIR = pdptw.OUTPUT_DIR / "Penalty_per_vehicles"
+SWEEP_OUTPUT_DIR = pdptw.OUTPUT_DIR / "Penalty_per_vehicles" / "Remove_Pending"
 SUMMARY_PATH = SWEEP_OUTPUT_DIR / "penalty_per_vehicles.csv"
 BEST_OUTPUT_DIR = SWEEP_OUTPUT_DIR / "best_penalty"
 PDPTW_OUTPUT_FILENAMES = (
@@ -37,13 +38,16 @@ PDPTW_OUTPUT_FILENAMES = (
 def configured_vehicle_counts() -> range:
     min_vehicles = CONFIG["min"]
     max_vehicles = CONFIG["max"]
-    if type(min_vehicles) is not int or type(max_vehicles) is not int:
-        raise TypeError("CONFIG의 min과 max는 정수여야 합니다")
+    step_vehicles = CONFIG["step"]
+    if any(type(value) is not int for value in (min_vehicles, max_vehicles, step_vehicles)):
+        raise TypeError("CONFIG의 min, max, step은 정수여야 합니다")
     if min_vehicles < 0 or max_vehicles < 0:
         raise ValueError("CONFIG의 min과 max는 0 이상이어야 합니다")
     if min_vehicles > max_vehicles:
         raise ValueError("CONFIG의 min은 max보다 클 수 없습니다")
-    return range(min_vehicles, max_vehicles + 1)
+    if step_vehicles <= 0:
+        raise ValueError("CONFIG의 step은 1 이상이어야 합니다")
+    return range(min_vehicles, max_vehicles + 1, step_vehicles)
 
 
 def simulate_zero_vehicles(output_dir: Path) -> pd.DataFrame:
@@ -207,7 +211,8 @@ def main() -> None:
 
     vehicle_counts = configured_vehicle_counts()
     print(
-        f"차량 수 범위: CONFIG min={CONFIG['min']}, max={CONFIG['max']}",
+        f"차량 수 범위: CONFIG min={CONFIG['min']}, max={CONFIG['max']}, "
+        f"step={CONFIG['step']}",
         flush=True,
     )
 
