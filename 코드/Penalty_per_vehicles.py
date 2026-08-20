@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pandas as pd
 
-import PDPTW_NEW as pdptw
+import 코드.PDPTW_main.PDPTW_NEW as pdptw
 
 
 CONFIG = {
