@@ -24,8 +24,7 @@ import pandas as pd
 
 # Excel 파일들이 들어 있는 폴더
 DATA_DIR = Path(
-    r"C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식"
-    r"\PDPTW_Rolling_Horizon\자료\결과\depot"
+    r"C:\Users\choih\Desktop\연구\PDPTW\자료\결과\Ortools\S1_1\Penalty_per_vehicles\Remove_depot\vehicles_55\depot"
 )
 
 # 실제 파일명이 다르면 오른쪽 파일명만 수정하면 된다.
@@ -37,7 +36,7 @@ DEPOT_FILES = {
     "김포공항": "김포공항.xlsx",
     "일산": "일산.xlsx",
     "판교": "판교.xlsx",
-    "동탄/용인": "통탄,용인.xlsx",
+    "동탄/용인": "동탄,용인.xlsx",
     "평택": "평택.xlsx",
     "인천공항": "인천공항.xlsx",
 }
