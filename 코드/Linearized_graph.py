@@ -37,6 +37,8 @@ from scipy.stats import t
 # 0. 경로 및 분석 설정
 # ============================================================
 
+from pathlib import Path
+
 BASE_DIR = Path(__file__).resolve().parent
 
 CSV_PATH = (
@@ -44,11 +46,21 @@ CSV_PATH = (
     / "자료"
     / "결과"
     / "Ortools"
+    / "8월21일"
     / "Penalty_per_vehicles"
+    / "Remove_Pending_Depot"
     / "penalty_per_vehicles.csv"
 )
 
-
+SAVE_PATH = (
+    BASE_DIR.parent
+        / "자료"
+        / "결과"
+        / "Ortools"
+        / "8월21일"
+        / "Penalty_per_vehicles"
+        / "Remove_Pending_Depot"
+)
 # ------------------------------------------------------------
 # SciPy optimizer의 numerical stopping tolerance
 #
@@ -86,7 +98,12 @@ SENSITIVITY_CONVERGENCE_RATES = (
 #
 # 반드시 Solver 문제, local optimum, 비정상 실행 등
 # 연구적으로 설명 가능한 근거가 있을 때만 제외할 것.
+#
+# False : exclude mask를 사용하지 않고 모든 데이터를 회귀에 사용
+# True  : EXCLUDED_RANGES에 지정한 구간을 회귀에서 제외
 # ------------------------------------------------------------
+USE_EXCLUSION_MASK = False
+
 EXCLUDED_RANGES = [
     (147, 164),
 ]
@@ -560,7 +577,7 @@ df = pd.read_csv(
 
 
 required_columns = {
-    "num_vehicles",
+    "vehicle_count",
     "total_penalty",
 }
 
@@ -580,7 +597,7 @@ if missing_columns:
 
 
 x = pd.to_numeric(
-    df["num_vehicles"],
+    df["vehicle_count"],
     errors="raise",
 ).to_numpy(
     dtype=float
@@ -624,10 +641,17 @@ if len(x) < 4:
 # 3. 비정상 구간 제외
 # ============================================================
 
-fit_mask = make_exclusion_mask(
-    x,
-    EXCLUDED_RANGES,
-)
+if USE_EXCLUSION_MASK:
+    fit_mask = make_exclusion_mask(
+        x,
+        EXCLUDED_RANGES,
+    )
+else:
+    # exclude 기능은 보존하되 현재 분석에서는 모든 데이터를 사용한다.
+    fit_mask = np.ones_like(
+        x,
+        dtype=bool,
+    )
 
 
 x_fit = x[
@@ -1818,6 +1842,14 @@ plt.grid(
 plt.legend()
 
 plt.tight_layout()
+
+# 메인 회귀 그래프 PNG 저장
+plt.savefig(
+    SAVE_PATH / "Penalty_vs_Vehicles.png",
+    dpi=300,
+    bbox_inches="tight",
+)
+
 
 
 # ============================================================
