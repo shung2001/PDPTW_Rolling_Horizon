@@ -577,7 +577,7 @@ df = pd.read_csv(
 
 
 required_columns = {
-    "vehicle_count",
+    "num_vehicles",
     "total_penalty",
 }
 
@@ -597,7 +597,7 @@ if missing_columns:
 
 
 x = pd.to_numeric(
-    df["vehicle_count"],
+    df["num_vehicles"],
     errors="raise",
 ).to_numpy(
     dtype=float
