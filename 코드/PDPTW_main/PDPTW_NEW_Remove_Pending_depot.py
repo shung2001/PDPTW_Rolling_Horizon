@@ -329,9 +329,16 @@ def build_horizon_model(active: list[RequestTask], batches: dict[str, BatchState
     """변경 시작: 중간 Rolling Horizon에서는 End까지의 가상 이동 비용을 0으로 처리"""
     def time_cb(fi: int, ti: int) -> int:
         f, t = manager.IndexToNode(fi), manager.IndexToNode(ti)
-        if not return_to_home and vehicle_count <= t < vehicle_count * 2: # 중간구간 노드는 아예 페널티 계산 X
-            return 0
-        return int(flight_time.loc[location(f), location(t)])
+
+        # [수정] Open End의 가상 End 이동거리는 0이지만,
+        # 마지막 Pickup/Delivery에서 발생한 SERVICE_TIME_MINUTES는 반영
+        if not return_to_home and vehicle_count <= t < vehicle_count * 2:
+            return service(f)
+
+        # [수정] 일반 이동은 이전 노드의 Service Time + 실제 비행시간
+        return service(f) + int(
+            flight_time.loc[location(f), location(t)]
+        )
 
     def distance_cb(fi: int, ti: int) -> int:
         f, t = manager.IndexToNode(fi), manager.IndexToNode(ti)

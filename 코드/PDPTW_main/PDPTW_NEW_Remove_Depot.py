@@ -31,7 +31,7 @@ VEHICLE_CAPACITY = 3
 DEPOT_ROUTE_NODE_IDS = list(range(1, 11))
 ROLLING_HORIZON_MINUTES = 30
 REOPTIMIZATION_INTERVAL_MINUTES = 20
-TIME_LIMIT_SECONDS = 120
+TIME_LIMIT_SECONDS = 20
 
 SERVICE_TIME_MINUTES = 3
 BOARDING_CHARGE_MINUTES = 2
@@ -644,9 +644,9 @@ def main() -> None:
         raise ValueError(f"Depot node가 행렬에 없습니다: {missing}")
     tasks, batches = load_tasks(REQUEST_PATH, distance, flight_time, nodes, transportation_matrix)
     maximum_max_wait = max(t.max_wait_min for t in tasks)
-    """변경 시작: 마지막 Rolling Horizon에서 최초 home_depot으로 복귀하기 위한 기준 시각"""
-    latest_window_end = max(t.window_end for t in tasks)
-    """변경 끝"""
+    """[추가 수정 5 시작] 모든 Rolling Horizon을 Open End로 유지하므로 최종 home_depot 복귀 기준 시각은 사용하지 않는다."""
+    # 기존 latest_window_end 계산 제거: 마지막 RH도 최초 home_depot 복귀를 강제하지 않는다.
+    """[추가 수정 5 끝]"""
     vehicles = [VehicleState(i, depots[i % len(depots)], depots[i % len(depots)]) for i in range(NUM_VEHICLES)]
     logs, plans, summaries = [], [], []
     simulation_end = max(t.window_end for t in tasks) + int(flight_time.to_numpy().max()) + SERVICE_TIME_MINUTES
@@ -693,10 +693,10 @@ def main() -> None:
             if LOG_ROLLING_HORIZON:
                 print("Solver 실행 시작...", flush=True)
             tick = time.perf_counter()
-            """변경 시작: 중간 RH는 Open End, 마지막 처리 가능 RH는 최초 home_depot을 End로 설정"""
-            return_to_home = commit_end > latest_window_end
+            """[추가 수정 6 시작] 마지막 RH를 포함한 모든 Rolling Horizon을 Open End로 처리한다."""
+            return_to_home = False
             model = build_horizon_model(active, batches, vehicles, distance, flight_time, hs, he, maximum_max_wait, return_to_home)
-            """변경 끝"""
+            """[추가 수정 6 끝] 최종 위치는 최초 home_depot이 아니라 실제 마지막 Commit 위치에 의해 결정된다."""
             solution = solve_horizon(model)
             runtime = time.perf_counter() - tick
             routes, selected = extract_routes(model, solution, vehicles)
@@ -738,7 +738,9 @@ def main() -> None:
 
         seen_batch_ids.update(active_batch_ids)
     update_batch_states(batches, simulation_end + ROLLING_HORIZON_MINUTES)
-    return_to_depots(vehicles, distance, flight_time, nodes, logs)
+    """[추가 수정 7 시작] 시뮬레이션 종료 후 최초 home_depot으로 강제 복귀시키지 않는다."""
+    # return_to_depots(vehicles, distance, flight_time, nodes, logs)
+    """[추가 수정 7 끝] 각 Vehicle은 마지막으로 실제 운항을 완료한 Node에 그대로 남는다."""
     if any(b.status == "Pending" for b in batches.values()):
         raise RuntimeError("최종 시뮬레이션에 Pending batch가 남았습니다")
     route_df = pd.DataFrame(logs)
