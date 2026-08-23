@@ -48,7 +48,7 @@ CSV_PATH = (
     / "Ortools"
     / "8월21일"
     / "Penalty_per_vehicles"
-    / "Remove_Pending_depot"
+    / "Original"
     / "penalty_per_vehicles.csv"
 )
 
@@ -59,7 +59,7 @@ SAVE_PATH = (
         / "Ortools"
         / "8월21일"
         / "Penalty_per_vehicles"
-        / "Remove_Pending_depot"
+        / "Original"
 )
 # ------------------------------------------------------------
 # SciPy optimizer의 numerical stopping tolerance

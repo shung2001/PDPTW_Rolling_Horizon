@@ -1,0 +1,12 @@
+﻿num_vehicles,total_penalty,complete_batch_count,overdue_batch_count,total_batch_count,runtime_seconds,output_directory,is_best_penalty
+200,221431300,4099,149,4248,1112.959,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\8월21일\Penalty_per_vehicles\Original\Penalty_per_vehicles\Original\vehicles_200,False
+205,237227700,4088,160,4248,1116.429,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\8월21일\Penalty_per_vehicles\Original\Penalty_per_vehicles\Original\vehicles_205,False
+210,219175900,4100,148,4248,1112.194,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\8월21일\Penalty_per_vehicles\Original\Penalty_per_vehicles\Original\vehicles_210,False
+215,218534900,4101,147,4248,1115.484,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\8월21일\Penalty_per_vehicles\Original\Penalty_per_vehicles\Original\vehicles_215,False
+220,187852700,4121,127,4248,1106.86,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\8월21일\Penalty_per_vehicles\Original\Penalty_per_vehicles\Original\vehicles_220,False
+225,185923500,4124,124,4248,1107.755,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\8월21일\Penalty_per_vehicles\Original\Penalty_per_vehicles\Original\vehicles_225,True
+230,194529200,4116,132,4248,1107.312,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\8월21일\Penalty_per_vehicles\Original\Penalty_per_vehicles\Original\vehicles_230,False
+235,207416600,4108,140,4248,1114.313,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\8월21일\Penalty_per_vehicles\Original\Penalty_per_vehicles\Original\vehicles_235,False
+240,208175800,4107,141,4248,1113.221,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\8월21일\Penalty_per_vehicles\Original\Penalty_per_vehicles\Original\vehicles_240,False
+245,194974700,4117,131,4248,1109.935,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\8월21일\Penalty_per_vehicles\Original\Penalty_per_vehicles\Original\vehicles_245,False
+250,203935200,4111,137,4248,1111.116,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\8월21일\Penalty_per_vehicles\Original\Penalty_per_vehicles\Original\vehicles_250,False
