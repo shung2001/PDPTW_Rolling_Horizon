@@ -48,8 +48,8 @@ CSV_PATH = (
     / "Ortools"
     / "8월21일"
     / "Penalty_per_vehicles"
-    / "Original"
-    / "penalty_per_vehicles.csv"
+    / "Remove_Depot"
+    / "penalty_per_vehicles_100000.csv"
 )
 
 SAVE_PATH = (
@@ -59,7 +59,7 @@ SAVE_PATH = (
         / "Ortools"
         / "8월21일"
         / "Penalty_per_vehicles"
-        / "Original"
+        / "Remove_Depot"
 )
 # ------------------------------------------------------------
 # SciPy optimizer의 numerical stopping tolerance
@@ -1845,7 +1845,7 @@ plt.tight_layout()
 
 # 메인 회귀 그래프 PNG 저장
 plt.savefig(
-    SAVE_PATH / "Penalty_vs_Vehicles.png",
+    SAVE_PATH / "Penalty_vs_Vehicles_Remove_Depot_100000.png",
     dpi=300,
     bbox_inches="tight",
 )
