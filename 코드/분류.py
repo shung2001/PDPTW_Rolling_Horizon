@@ -6,7 +6,7 @@ from pathlib import Path
 # 설정
 # =========================
 BASE_DIR = Path(__file__).resolve().parents[1]
-INPUT_FILE = BASE_DIR / "자료" / "결과" / "Ortools" / "8월21일" / "FOCUSED" / "Remove_Depot" / "node_vehicle_occupancy_by_minute.csv"
+INPUT_FILE = BASE_DIR / "자료" / "결과" / "Ortools" / "8월21일" / "FOCUSED" / "Original" / "100000" / "node_vehicle_occupancy_by_minute.csv"
 OUTPUT_DIR = INPUT_FILE.parent / "분류된_노드"
 
 # 명칭이 들어있는 열

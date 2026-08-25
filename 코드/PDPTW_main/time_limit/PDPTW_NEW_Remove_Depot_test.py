@@ -23,10 +23,11 @@ DISTANCE_MATRIX_PATH = INPUT_DIR / "distance_matrix_km.csv"
 TIME_MATRIX_PATH = INPUT_DIR / "flight_time_matrix_min_remove_fuel.csv"
 NODE_REFERENCE_PATH = INPUT_DIR / "vp_reference.csv"
 TRANSPORTATION_MATRIX_PATH = PROJECT_DIR / "자료" / "결과" / "차량_교통수단" /"public_transit_time_matrix_min.csv"
-OUTPUT_DIR = PROJECT_DIR / "자료" / "결과" / "Ortools" / "8월21일" / "FOCUSED" / "Original"
+OUTPUT_DIR = PROJECT_DIR / "자료" / "결과" / "Ortools" / "8월21일" / "FOCUSED" / "Remove_Depot" / "100000"
 
 BASE_TIME = "05:40"
-NUM_VEHICLES = 176
+END_TIME = "19:16"
+NUM_VEHICLES = 170
 VEHICLE_CAPACITY = 3
 DEPOT_ROUTE_NODE_IDS = list(range(1, 11))
 ROLLING_HORIZON_MINUTES = 30
@@ -37,7 +38,7 @@ SERVICE_TIME_MINUTES = 3
 BOARDING_CHARGE_MINUTES = 2
 TAXI_TIME_MINUTES = 1
 BASE_DROP_PENALTY = 1_000_000
-PENDING_PENALTY_PER_COUNT = 10_000
+PENDING_PENALTY_PER_COUNT = 100_000
 MAX_WAIT_PENALTY_WEIGHT = 1_000
 TRANSPORTATION_JOBY_PENALTY_WEIGHT = 10_000
 INITIAL_REMAINING_RANGE_KM = 160.0
@@ -207,6 +208,12 @@ def base_time_minutes() -> int:
     return h * 60 + m
 
 
+def end_time_minutes() -> int:
+    h, m = map(int, END_TIME.split(":")[:2])
+    result = h * 60 + m - base_time_minutes()
+    return result + 1440 if result < 0 else result
+
+
 def to_offset_minutes(value: object) -> int:
     if pd.isna(value):
         raise ValueError("arrival/departure time 값이 비어 있습니다")
@@ -257,6 +264,8 @@ def load_tasks(request_path: Path, distance: pd.DataFrame, flight_time: pd.DataF
             arrival_time = int(row["arrT_hr"]) * 60 + int(row["arrT_m"]) - base_time_minutes()
         else:
             raise KeyError("필수 arrival time 열(arrT/arrival_time 또는 arrT_hr+arrT_m)이 없습니다")
+        if art < 0 or art > end_time_minutes() or arrival_time < 0 or arrival_time > end_time_minutes():
+            continue
         if jc:
             joby = int(math.ceil(float(row[jc])))
         elif {"arrT_hr", "arrT_m", "depT_hr", "depT_m"}.issubset(raw.columns):
@@ -371,7 +380,7 @@ def build_horizon_model(active: list[RequestTask], batches: dict[str, BatchState
         pnode, dnode = pickup_nodes[task.task_key], delivery_nodes[task.task_key]
         pi, deli = manager.NodeToIndex(pnode), manager.NodeToIndex(dnode)
         td.CumulVar(pi).SetRange(max(hs, task.departure_time), he)
-        td.CumulVar(deli).SetRange(max(hs, task.arrival_time), min(model_end, task.window_end))
+        td.CumulVar(deli).SetRange(max(hs, task.arrival_time), min(task.window_end, end_time_minutes()))
         routing.AddPickupAndDelivery(pi, deli)
         solver.Add(routing.VehicleVar(pi) == routing.VehicleVar(deli))
         solver.Add(td.CumulVar(pi) <= td.CumulVar(deli))
@@ -443,6 +452,26 @@ def commit_routes(route_events: list[dict[str, Any]], vehicles: list[VehicleStat
     for vehicle_id, events in grouped.items():
         state = state_by_id[vehicle_id]
         chosen = {r["task"].task_key for r in events if r["event"] == "Pickup" and r["time"] < commit_end}
+        if not chosen:
+            continue
+        projected_node, projected_time, projected_remaining = state.route_node_id, state.available_time, state.remaining_range_km
+        late_task_keys: set[str] = set()
+        for projected_row in [r for r in events if r["task"].task_key in chosen]:
+            projected_task, projected_event = projected_row["task"], projected_row["event"]
+            projected_target = projected_task.origin if projected_event == "Pickup" else projected_task.destination
+            projected_dist, projected_travel = float(distance.loc[projected_node, projected_target]), int(flight_time.loc[projected_node, projected_target])
+            projected_planned = max(projected_time, projected_row["time"])
+            projected_parking = max(0, projected_planned - projected_time - projected_travel)
+            projected_remaining = min(MAX_REMAINING_RANGE_KM, projected_remaining + projected_parking * CHARGING_RATE_KM_PER_MIN)
+            projected_extra_charge, projected_departure_range = charge_for_departure(projected_remaining, projected_dist)
+            projected_departure = projected_time + projected_parking + projected_extra_charge
+            projected_arrival = projected_departure + projected_travel
+            projected_after_flight = projected_departure_range - projected_dist
+            projected_service_charge = min(MAX_REMAINING_RANGE_KM, projected_after_flight + BOARDING_CHARGE_MINUTES * CHARGING_RATE_KM_PER_MIN)
+            if projected_event == "Delivery" and projected_arrival > end_time_minutes():
+                late_task_keys.add(projected_task.task_key)
+            projected_node, projected_time, projected_remaining = projected_target, projected_arrival + SERVICE_TIME_MINUTES, projected_service_charge
+        chosen -= late_task_keys
         if not chosen:
             continue
         # Commit the complete pickup/delivery sequence for pickups inside the frozen interval.
@@ -644,20 +673,20 @@ def main() -> None:
         raise ValueError(f"Depot node가 행렬에 없습니다: {missing}")
     tasks, batches = load_tasks(REQUEST_PATH, distance, flight_time, nodes, transportation_matrix)
     maximum_max_wait = max(t.max_wait_min for t in tasks)
-    """변경 시작: 마지막 Rolling Horizon에서 최초 home_depot으로 복귀하기 위한 기준 시각"""
-    latest_window_end = max(t.window_end for t in tasks)
-    """변경 끝"""
+    """[추가 수정 5 시작] 모든 Rolling Horizon을 Open End로 유지하므로 최종 home_depot 복귀 기준 시각은 사용하지 않는다."""
+    # 기존 latest_window_end 계산 제거: 마지막 RH도 최초 home_depot 복귀를 강제하지 않는다.
+    """[추가 수정 5 끝]"""
     vehicles = [VehicleState(i, depots[i % len(depots)], depots[i % len(depots)]) for i in range(NUM_VEHICLES)]
     logs, plans, summaries = [], [], []
-    simulation_end = max(t.window_end for t in tasks) + int(flight_time.to_numpy().max()) + SERVICE_TIME_MINUTES
-    horizon_starts = range(0, simulation_end + 1, REOPTIMIZATION_INTERVAL_MINUTES)
+    simulation_end = end_time_minutes()
+    horizon_starts = range(0, simulation_end, REOPTIMIZATION_INTERVAL_MINUTES)
     total_horizons = len(horizon_starts)
     seen_batch_ids: set[str] = set()
 
     for rh_index, hs in enumerate(horizon_starts, start=1):
         update_batch_states(batches, hs)
-        he = hs + ROLLING_HORIZON_MINUTES
-        commit_end = hs + REOPTIMIZATION_INTERVAL_MINUTES
+        he = min(hs + ROLLING_HORIZON_MINUTES, simulation_end)
+        commit_end = min(hs + REOPTIMIZATION_INTERVAL_MINUTES, simulation_end)
         active = [t for t in tasks if batches[t.batch_id].status == "Pending" and t.art <= he and t.window_end >= hs]
         active_batch_ids = {t.batch_id for t in active}
         new_batch_ids = active_batch_ids - seen_batch_ids
@@ -674,9 +703,9 @@ def main() -> None:
             print("\n" + "=" * 72, flush=True)
             print(f"[Rolling Horizon {rh_index}/{total_horizons} | {progress:5.1f}%]", flush=True)
             print(f"현재 시각       : {format_hhmm(hs)}  (t={hs} min)", flush=True)
-            print(f"최적화 구간    : {format_hhmm(hs)} ~ {format_hhmm(he)}  ({ROLLING_HORIZON_MINUTES}분)", flush=True)
-            print(f"확정/Commit 구간: {format_hhmm(hs)} ~ {format_hhmm(commit_end)}  ({REOPTIMIZATION_INTERVAL_MINUTES}분)", flush=True)
-            print(f"재계획 중첩구간 : {format_hhmm(overlap_start)} ~ {format_hhmm(overlap_end)}  ({ROLLING_HORIZON_MINUTES - REOPTIMIZATION_INTERVAL_MINUTES}분)", flush=True)
+            print(f"최적화 구간    : {format_hhmm(hs)} ~ {format_hhmm(he)}  ({he - hs}분)", flush=True)
+            print(f"확정/Commit 구간: {format_hhmm(hs)} ~ {format_hhmm(commit_end)}  ({commit_end - hs}분)", flush=True)
+            print(f"재계획 중첩구간 : {format_hhmm(overlap_start)} ~ {format_hhmm(overlap_end)}  ({max(0, overlap_end - overlap_start)}분)", flush=True)
             print(f"다음 갱신 시각 : {format_hhmm(commit_end)}", flush=True)
             print("-" * 72, flush=True)
             print(f"활성 Alternative Request : {len(active):,}", flush=True)
@@ -693,10 +722,10 @@ def main() -> None:
             if LOG_ROLLING_HORIZON:
                 print("Solver 실행 시작...", flush=True)
             tick = time.perf_counter()
-            """변경 시작: 중간 RH는 Open End, 마지막 처리 가능 RH는 최초 home_depot을 End로 설정"""
-            return_to_home = commit_end > latest_window_end
+            """[추가 수정 6 시작] 마지막 RH를 포함한 모든 Rolling Horizon을 Open End로 처리한다."""
+            return_to_home = False
             model = build_horizon_model(active, batches, vehicles, distance, flight_time, hs, he, maximum_max_wait, return_to_home)
-            """변경 끝"""
+            """[추가 수정 6 끝] 최종 위치는 최초 home_depot이 아니라 실제 마지막 Commit 위치에 의해 결정된다."""
             solution = solve_horizon(model)
             runtime = time.perf_counter() - tick
             routes, selected = extract_routes(model, solution, vehicles)
@@ -705,7 +734,7 @@ def main() -> None:
             for task in active:
                 """"""  # 변경 시작: planned_visit가 단순 계획인지 실제 Commit인지 구분할 수 있도록 planned Pickup 시각과 committed 여부를 plan history에 추가한다.
                 planned_pickup_time = next((int(row["time"]) for row in routes if row["event"] == "Pickup" and row["task"].task_key == task.task_key), None)
-                plans.append({"horizon_start": hs, "horizon_end": he, "request_id": task.request_id, "batch_id": task.batch_id, "planned_visit": task.task_key in selected, "planned_pickup_time": planned_pickup_time, "committed": planned_pickup_time is not None and planned_pickup_time < commit_end, "drop_penalty": drop_penalty(batches[task.batch_id], maximum_max_wait)})
+                plans.append({"horizon_start": hs, "horizon_end": he, "request_id": task.request_id, "batch_id": task.batch_id, "planned_visit": task.task_key in selected, "planned_pickup_time": planned_pickup_time, "committed": planned_pickup_time is not None and planned_pickup_time < commit_end and task.status == "Complete", "drop_penalty": drop_penalty(batches[task.batch_id], maximum_max_wait)})
                 """"""  # 변경 끝: committed=True는 해당 Pickup 계획시각이 현재 RH의 commit_end보다 앞서 실제 확정 대상이 된 경우를 의미한다.
         elif LOG_ROLLING_HORIZON:
             print("활성 Request가 없어 Solver 실행을 건너뜁니다.", flush=True)
@@ -738,7 +767,15 @@ def main() -> None:
 
         seen_batch_ids.update(active_batch_ids)
     update_batch_states(batches, simulation_end + ROLLING_HORIZON_MINUTES)
-    return_to_depots(vehicles, distance, flight_time, nodes, logs)
+    for batch in batches.values():
+        if batch.status == "Pending":
+            batch.status = "Overdue"
+            for task in batch.alternatives:
+                if task.status != "Complete":
+                    task.status = "Overdue"
+    """[추가 수정 7 시작] 시뮬레이션 종료 후 최초 home_depot으로 강제 복귀시키지 않는다."""
+    # return_to_depots(vehicles, distance, flight_time, nodes, logs)
+    """[추가 수정 7 끝] 각 Vehicle은 마지막으로 실제 운항을 완료한 Node에 그대로 남는다."""
     if any(b.status == "Pending" for b in batches.values()):
         raise RuntimeError("최종 시뮬레이션에 Pending batch가 남았습니다")
     route_df = pd.DataFrame(logs)

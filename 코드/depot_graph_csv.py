@@ -25,7 +25,8 @@ DEFAULT_DATA_DIR = (
     / "Ortools"
     / "8월21일"
     / "FOCUSED"
-    / "Remove_Pending_depot"
+    / "Remove_Depot"
+    / "100000"
     / "분류된_노드"
 )
 
