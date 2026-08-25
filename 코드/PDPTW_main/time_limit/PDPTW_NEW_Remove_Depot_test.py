@@ -18,12 +18,12 @@ from ortools.constraint_solver import pywrapcp, routing_enums_pb2
 
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 INPUT_DIR = PROJECT_DIR / "자료" / "기초자료"
-REQUEST_PATH = INPUT_DIR / "finalDemand_v5" / "finalDemand_v5" / "d5000_s01.csv"
+REQUEST_PATH = INPUT_DIR / "finalDemand_v5" / "finalDemand_v5" / "d1000_s01.csv"
 DISTANCE_MATRIX_PATH = INPUT_DIR / "distance_matrix_km.csv"
 TIME_MATRIX_PATH = INPUT_DIR / "flight_time_matrix_min_remove_fuel.csv"
 NODE_REFERENCE_PATH = INPUT_DIR / "vp_reference.csv"
 TRANSPORTATION_MATRIX_PATH = PROJECT_DIR / "자료" / "결과" / "차량_교통수단" /"public_transit_time_matrix_min.csv"
-OUTPUT_DIR = PROJECT_DIR / "자료" / "결과" / "Ortools" / "8월21일" / "FOCUSED" / "Remove_Depot" / "100000"
+OUTPUT_DIR = PROJECT_DIR / "자료" / "결과" / "Ortools" / "d1000" / "Penalty_Per_Vehicles" / "Remove_Depot" / "Pending" / "100000"
 
 BASE_TIME = "05:40"
 END_TIME = "19:16"
@@ -32,7 +32,7 @@ VEHICLE_CAPACITY = 3
 DEPOT_ROUTE_NODE_IDS = list(range(1, 11))
 ROLLING_HORIZON_MINUTES = 30
 REOPTIMIZATION_INTERVAL_MINUTES = 20
-TIME_LIMIT_SECONDS = 120
+TIME_LIMIT_SECONDS = 10
 
 SERVICE_TIME_MINUTES = 3
 BOARDING_CHARGE_MINUTES = 2

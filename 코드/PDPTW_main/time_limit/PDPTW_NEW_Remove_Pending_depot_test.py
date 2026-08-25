@@ -23,7 +23,7 @@ DISTANCE_MATRIX_PATH = INPUT_DIR / "distance_matrix_km.csv"
 TIME_MATRIX_PATH = INPUT_DIR / "flight_time_matrix_min_remove_fuel.csv"
 NODE_REFERENCE_PATH = INPUT_DIR / "vp_reference.csv"
 TRANSPORTATION_MATRIX_PATH = PROJECT_DIR / "자료" / "결과" / "차량_교통수단" /"public_transit_time_matrix_min.csv"
-OUTPUT_DIR = PROJECT_DIR / "자료" / "결과" / "Ortools" / "8월21일" / "FOCUSED" / "Remove_Pending_depot"
+OUTPUT_DIR = PROJECT_DIR / "자료" / "결과" / "Ortools" / "d1000" / "Penalty_Per_Vehicles" / "Remove_Pending_Depot" / "Pending" / "100000"
 
 BASE_TIME = "05:40"
 END_TIME = "19:16"

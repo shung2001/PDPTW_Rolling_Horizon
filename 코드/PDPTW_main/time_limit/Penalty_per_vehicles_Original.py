@@ -13,16 +13,16 @@ from pathlib import Path
 
 import pandas as pd
 
-import PDPTW_NEW as pdptw
+import PDPTW_NEW_TEST as pdptw
 
 
 CONFIG = {
-    "min": 50,
-    "max": 250,
+    "min": 20,
+    "max": 100,
     "step": 5,
 }
 
-SWEEP_OUTPUT_DIR = pdptw.OUTPUT_DIR / "100_000"
+SWEEP_OUTPUT_DIR = pdptw.OUTPUT_DIR
 SUMMARY_PATH = SWEEP_OUTPUT_DIR / "penalty_per_vehicles.csv"
 BEST_OUTPUT_DIR = SWEEP_OUTPUT_DIR / "best_penalty"
 PDPTW_OUTPUT_FILENAMES = (
