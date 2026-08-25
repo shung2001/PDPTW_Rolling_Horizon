@@ -1,0 +1,5 @@
+﻿num_vehicles,total_penalty,complete_batch_count,overdue_batch_count,total_batch_count,runtime_seconds,output_directory
+20,4278714500,546,2789,3335,414.607,C:\Users\choih\Desktop\연구\PDPTW\자료\결과\Ortools\d1000\Penalty_Per_Vehicles\Remove_Pending_Depot\Pending\100000\vehicles_20
+25,4004195800,698,2637,3335,413.148,C:\Users\choih\Desktop\연구\PDPTW\자료\결과\Ortools\d1000\Penalty_Per_Vehicles\Remove_Pending_Depot\Pending\100000\vehicles_25
+30,3725466500,861,2474,3335,414.851,C:\Users\choih\Desktop\연구\PDPTW\자료\결과\Ortools\d1000\Penalty_Per_Vehicles\Remove_Pending_Depot\Pending\100000\vehicles_30
+35,3496409600,997,2338,3335,414.133,C:\Users\choih\Desktop\연구\PDPTW\자료\결과\Ortools\d1000\Penalty_Per_Vehicles\Remove_Pending_Depot\Pending\100000\vehicles_35

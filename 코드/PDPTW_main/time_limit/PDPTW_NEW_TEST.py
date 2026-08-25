@@ -207,7 +207,7 @@ def base_time_minutes() -> int:
     h, m = map(int, BASE_TIME.split(":")[:2])
     return h * 60 + m
 
-
+# 모든 비행시간에 대한 최종 종료 시간. 단, 본 코드는 착륙까지 end_time내에 하는 것이 아닌 단지 최종 경로 선택 (commit)을 시점으로 진행한다.
 def end_time_minutes() -> int:
     h, m = map(int, END_TIME.split(":")[:2])
     result = h * 60 + m - base_time_minutes()
