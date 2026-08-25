@@ -147,7 +147,7 @@ def normalize_id(value: object) -> str:
     except ValueError:
         return text
 
-
+# load_task(), load_nodes()와 같이 csv를 통해 불러올 때, 사용
 def find_column(df: pd.DataFrame, key: str, required: bool = True) -> str | None:
     names = {str(c).strip().lower(): str(c) for c in df.columns}
     for alias in COLUMN_ALIASES[key]:
@@ -157,7 +157,7 @@ def find_column(df: pd.DataFrame, key: str, required: bool = True) -> str | None
         raise KeyError(f"필수 열 '{key}'이 없습니다. 허용 alias={COLUMN_ALIASES[key]}, 실제 열={list(df.columns)}")
     return None
 
-
+# 인코딩, 해당 파일을 열기 전에 여러가지 방식으로 인코딩을 진행.
 def read_table(path: Path) -> pd.DataFrame:
     if not path.exists():
         raise FileNotFoundError(f"입력 파일을 찾을 수 없습니다: {path}")
@@ -168,7 +168,7 @@ def read_table(path: Path) -> pd.DataFrame:
             pass
     raise ValueError(f"CSV encoding을 판별할 수 없습니다: {path}")
 
-
+# Distance & Time matrix를 불러옴
 def load_matrix(path: Path, integer: bool) -> pd.DataFrame:
     df = read_table(path).set_index(read_table(path).columns[0])
     df.index = [normalize_id(v) for v in df.index]
@@ -179,18 +179,16 @@ def load_matrix(path: Path, integer: bool) -> pd.DataFrame:
     df = df.loc[df.index, df.index]
     return df.round().astype(int) if integer else df.astype(float)
 
-
 def load_nodes(path: Path) -> dict[str, NodeInfo]:
     df = read_table(path)
-    rc = find_column(df, "route_node")
-    pc = find_column(df, "physical_node", False) or rc
-    ac = find_column(df, "address", False)
-    xc, yc = find_column(df, "longitude"), find_column(df, "latitude")
+    rc = find_column(df, "route_node") # df에서 "route_node"를 가져옴. 정확히는 COLUMN_ALIASES의 route_node list에서 "vp_id"를 가져옴.
+    pc = find_column(df, "physical_node", False) or rc # 이전에는 physical_node라고 지정을 했지만, 이제는 없어서 FALSE로 설정
+    ac = find_column(df, "address", False) # 같음
+    xc, yc = find_column(df, "longitude"), find_column(df, "latitude") # lat, lon으로 불러옴
     return {normalize_id(r[rc]): NodeInfo(normalize_id(r[rc]), normalize_id(r[pc]), "" if ac is None else str(r[ac]), float(r[xc]), float(r[yc])) for _, r in df.iterrows()}
 
-# 각 지역에 대한 딕셔너리 생성
+# vp_reference.csv에 대한 정보로 각 A->B의 case를 통해 모든 경우의 수를 matrix 형태로 생성
 def load_named_matrix(path: Path, nodes: dict[str, NodeInfo]) -> pd.DataFrame:
-    """Load a matrix whose axes use vp names and convert them to route-node IDs."""
     df = read_table(path)
     df = df.set_index(df.columns[0])
     name_to_id = {node.address.strip(): node_id for node_id, node in nodes.items()}
@@ -217,7 +215,7 @@ def end_time_minutes() -> int:
 def to_offset_minutes(value: object) -> int:
     if pd.isna(value):
         raise ValueError("arrival/departure time 값이 비어 있습니다")
-    if isinstance(value, (int, float)): # float인 경우, int로 변형. 단, 본 data는 전부 분의 형태로 구성 돼 있으므로 문제 X
+    if isinstance(value, (int, float)): # float인 경우, int로 변형. 단, 본 data는 전부 분의 형태로 구성 돼 있으므로 문제 X 
         return int(round(float(value)))
     parts = str(value).strip().split(":")
     if len(parts) < 2:
@@ -225,7 +223,7 @@ def to_offset_minutes(value: object) -> int:
     result = int(parts[0]) * 60 + int(parts[1]) - base_time_minutes()
     return result + 1440 if result < 0 else result
 
-
+# objectives의 핵심
 def drop_penalty(batch: BatchState, maximum_max_wait: int) -> int:
     representative = batch.alternatives[0]
     flight_time_matrix = getattr(drop_penalty, "_flight_time_matrix", None)
@@ -235,29 +233,30 @@ def drop_penalty(batch: BatchState, maximum_max_wait: int) -> int:
     joby_min = float(flight_time_matrix.loc[representative.origin, representative.destination])
     return int(BASE_DROP_PENALTY + PENDING_PENALTY_PER_COUNT * batch.pending_count + MAX_WAIT_PENALTY_WEIGHT * (maximum_max_wait - representative.max_wait_min) + TRANSPORTATION_JOBY_PENALTY_WEIGHT * (representative.transportation_min - joby_min))
 
-
+""" main에서 생성한 DataFrame을 가져옴. 최종적으로 Request OD에 대한 batch를 생성하기 위함. 왜냐하면, Request_OD가 1->2 일 때 passenger가 4명이면 [3,1]로 분리를 해야하므로 이때 사용하는 게 Batch"""
 def load_tasks(request_path: Path, distance: pd.DataFrame, flight_time: pd.DataFrame, nodes: dict[str, NodeInfo], transportation_matrix: pd.DataFrame | None = None) -> tuple[list[RequestTask], dict[str, BatchState]]:
-    raw = read_table(request_path)
-    oc, dc = find_column(raw, "origin"), find_column(raw, "destination")
-    cc, wc = find_column(raw, "passengers"), find_column(raw, "max_wait")
+    raw = read_table(request_path) # d5000.csv를 가져옴
+    oc, dc = find_column(raw, "origin"), find_column(raw, "destination") # origin = n, destination = m
+    cc, wc = find_column(raw, "passengers"), find_column(raw, "max_wait")  # passengers = cnt, max_wait = maxWait_min
     depc = find_column(raw, "departure", False)
     arrc = find_column(raw, "arrival", False)
     tc, jc = find_column(raw, "transportation", False), find_column(raw, "joby_time", False)
     ric, bic = find_column(raw, "request_id", False), find_column(raw, "batch_id", False)
     tasks: list[RequestTask] = []
     for pos, (_, row) in enumerate(raw.iterrows()):
-        origin, destination = normalize_id(row[oc]), normalize_id(row[dc])
-        if origin == destination:
-            continue
+        origin, destination = normalize_id(row[oc]), normalize_id(row[dc]) # 각 출발지와 도착지의 모든 data를 불러옴.
+        if origin == destination: # n과 m이 같을 경우 생성 x
+            continue 
         if origin not in nodes or destination not in nodes or origin not in distance.index or destination not in distance.columns:
             raise KeyError(f"수요 row {pos}의 node가 행렬/참조에 없습니다: {origin}->{destination}")
         if depc:
             art = to_offset_minutes(row[depc])
+        # Ortools 시간으로 변경    
         elif {"depT_hr", "depT_m"}.issubset(raw.columns):
             art = int(row["depT_hr"]) * 60 + int(row["depT_m"]) - base_time_minutes()
         else:
             raise KeyError("필수 arrival time 열(art/departure 또는 depT_hr+depT_m)이 없습니다")
-        departure_time = max(0, art)
+        departure_time = max(0, art) # Base_time을 5:40으로 설정했으나, 아주 극악의 확률로 5:30분을 반영하게 되는 경우, art < 0이 됨. ortools는 음수는 허용하지 않으므로 그냥 0으로 출력하는 안전장치
         if arrc:
             arrival_time = to_offset_minutes(row[arrc])
         elif {"arrT_hr", "arrT_m"}.issubset(raw.columns):
@@ -280,35 +279,33 @@ def load_tasks(request_path: Path, distance: pd.DataFrame, flight_time: pd.DataF
             raise KeyError("필수 Transportation_min 열(또는 depT_hr/depT_m/arrT_hr/arrT_m)이 없습니다")
         if transportation <= joby:
             raise ValueError(f"row {pos}: Transportation_min({transportation})은 Joby_min({joby})보다 커야 합니다")
-        request_id = normalize_id(row[ric]) if ric else f"R{pos + 1}"
-        batch_id = normalize_id(row[bic]) if bic else f"B{pos + 1}"
-        count = int(math.ceil(float(row[cc])))
+        request_id = normalize_id(row[ric]) if ric else f"R{pos + 1}" # 위에 있는 ric는 전부 none이다. 따라서, else의 R{pos + 1}을 통해서 orgin과 destination의 열의 개수만큼 Node를 생성
+        batch_id = normalize_id(row[bic]) if bic else f"B{pos + 1}" # 위와 동일
+        count = int(math.ceil(float(row[cc]))) 
         if count < 1:
             raise ValueError(f"row {pos}: cnt는 1 이상이어야 합니다: {count}")
         if bic and count > VEHICLE_CAPACITY:
             raise ValueError(f"row {pos}: 명시적 batch_id의 cnt={count}가 vehicle capacity={VEHICLE_CAPACITY}를 초과합니다")
-        # Legacy aggregate-demand CSVs have no batch_id. Preserve their meaning by
-        # splitting cnt into capacity-sized, independent passenger batches.
+        # Request_OD가 차량의 Vehicles보다 많은 경우
         parts = int(math.ceil(count / VEHICLE_CAPACITY))
         remaining = count
-        # Passenger batch_id를 생성
+        # Passenger > 차량 capacity임을 위해 batch_id를 생성
         for part in range(parts):
             passengers = min(VEHICLE_CAPACITY, remaining)
             part_batch = batch_id if parts == 1 else f"{batch_id}-{part + 1}"
             part_request = request_id if parts == 1 else f"{request_id}-{part + 1}"
-            tasks.append(RequestTask(f"{part_batch}:{part_request}", part_request, part_batch, origin, destination, passengers, max(0, art), departure_time, arrival_time, int(math.ceil(float(row[wc]))), transportation, joby, float(distance.loc[origin, destination])))
+            tasks.append(RequestTask(f"{part_batch}:{part_request}", part_request, part_batch, origin, destination, passengers, max(0, art), departure_time, arrival_time, int(math.ceil(float(row[wc]))), transportation, joby, float(distance.loc[origin, destination]))) # task 내에 전처리한 정보를 저장
             remaining -= passengers
-    batches: dict[str, BatchState] = {}
+    batches: dict[str, BatchState] = {} #위의 BatchState 클래스 양식에 맞게 생성
     for task in tasks:
         batches.setdefault(task.batch_id, BatchState(task.batch_id)).alternatives.append(task)
-    return tasks, batches
+    return tasks, batches # 궁극적으로 dict 형태로 출력
 
 
-"""변경 시작: 중간 Rolling Horizon의 End를 Open End로 처리하기 위한 설정"""
+
 def build_horizon_model(active: list[RequestTask], batches: dict[str, BatchState], vehicles: list[VehicleState], distance: pd.DataFrame, flight_time: pd.DataFrame, hs: int, he: int, maximum_max_wait: int, return_to_home: bool = False) -> HorizonModel:
-    """변경 끝"""
     vehicle_count = len(vehicles)
-    starts = list(range(vehicle_count))
+    starts = list(range(vehicle_count)) # starts 와 ends는 궁극적으로 depot이므로 각 차량 수 만큼 가상의 depot node를 생성해야한다. 단, 아직 실제 node로 변환 된 것은 아님. def location(model_node:int)를 참조
     ends = list(range(vehicle_count, vehicle_count * 2))
     node_meta: dict[int, tuple[str, RequestTask | None]] = {}
     pickup_nodes, delivery_nodes = {}, {}
@@ -320,47 +317,45 @@ def build_horizon_model(active: list[RequestTask], batches: dict[str, BatchState
         cursor += 2
     manager = pywrapcp.RoutingIndexManager(cursor, vehicle_count, starts, ends)
     routing = pywrapcp.RoutingModel(manager)
-    by_vehicle = {v.vehicle_id: v for v in vehicles}
 
+    by_vehicle = {v.vehicle_id: v for v in vehicles} 
     def location(model_node: int) -> str:
         # 이번 RH 시작 시 차량의 현재 위치
         if model_node < vehicle_count:
-            return by_vehicle[model_node].route_node_id
+            return by_vehicle[model_node].route_node_id # 위의 vehicles는 class VehicleState에서 가져온 것으로 가상의  node -> physical node로 변환(start)
         # 차량의 원래 Depot
-        if model_node < vehicle_count * 2:
-            return by_vehicle[model_node - vehicle_count].home_depot
+        if model_node < vehicle_count * 2: 
+            return by_vehicle[model_node - vehicle_count].home_depot # 위의 vehicles는 class VehicleState에서 가져온 것으로 가상의  node -> physical node로 변환(start)
         # Request Node
         event, task = node_meta[model_node]
         return task.origin if event == "Pickup" else task.destination  # type: ignore[union-attr]
 
     def service(model_node: int) -> int:
-        return SERVICE_TIME_MINUTES if model_node in node_meta else 0 #어차피 모든 노드는 전부 PD 노드 그래서 추후에 진행하는 SERVICE_TIME_MINUTES를 진행.
+        return SERVICE_TIME_MINUTES if model_node in node_meta else 0 #어차피 모든 노드는 전부 PD 노드 그래서 Delivery 이후에 SERVICE_TIME_MINUTES를 진행.
 
-    """변경 시작: 중간 Rolling Horizon에서는 End까지의 가상 이동 비용을 0으로 처리"""
     def time_cb(fi: int, ti: int) -> int:
         f, t = manager.IndexToNode(fi), manager.IndexToNode(ti)
-        if not return_to_home and vehicle_count <= t < vehicle_count * 2: # 중간구간 노드는 아예 페널티 계산 X
-            return service(f)
+        if not return_to_home and vehicle_count <= t < vehicle_count * 2: # 각 RH 당 형식상 depot이 필요하다. 따라서, 위의 가상의 노드를 가져와 (마지막_노드) -> (가상_Depot)을 0으로 설정
+            return service(f) #이를 통해, (마지막_노드)에 대한 최종시간 출력. 왜냐하면, def service()를 통해서 (마지막_노드) -> (가상_Depot)에 대한 값은 0임
         return service(f) + int(flight_time.loc[location(f), location(t)])
 
     def distance_cb(fi: int, ti: int) -> int:
         f, t = manager.IndexToNode(fi), manager.IndexToNode(ti)
-        if not return_to_home and vehicle_count <= t < vehicle_count * 2: # 중간노드는 아예 페널티 계산 X
+        if not return_to_home and vehicle_count <= t < vehicle_count * 2: # 각 RH 당 형식상 depot이 필요하다. 따라서, 가상의 depot을 생성해 (마지막_노드) -> (가상_Depot)을 0으로 설정
             return 0
         return int(round(float(distance.loc[location(f), location(t)]) * 1000))
-    """변경 끝"""
-
+    
     def range_cb(fi: int, ti: int) -> int: # 각 경로별 거리 출력 이 거리를 통해 vehicle의 잔여 비행가능 거리를 업데이트 
         return -distance_cb(fi, ti) # 각 경로별 거리 출력 이 거리를 통해 vehicle의 잔여 비행가능 거리를 업데이트 
 
-    ti = routing.RegisterTransitCallback(time_cb)
+    ti = routing.RegisterTransitCallback(time_cb) # 누적 비행 시간
     di = routing.RegisterTransitCallback(distance_cb) # 경로별 거리
     ri = routing.RegisterTransitCallback(range_cb) # 비행기 잔여 비행가능 거리 
-    routing.SetArcCostEvaluatorOfAllVehicles(di)
-    model_end = he + int(flight_time.to_numpy().max()) * 4 + SERVICE_TIME_MINUTES * 4
-    routing.AddDimension(ti, model_end, model_end, False, "Time")
+    routing.SetArcCostEvaluatorOfAllVehicles(di) # distance에 대한 cost 평가
+    model_end = he + int(flight_time.to_numpy().max()) * 4 + SERVICE_TIME_MINUTES * 4 # 비행 마무리 시간에 대한 여유 분 제공. -> 일몰 시간(End_Time) 이전의 request_OD를 전부 처리하고 Depot으로 복귀하는 여유시간 
+    routing.AddDimension(ti, model_end, model_end, False, "Time") 
     td = routing.GetDimensionOrDie("Time")
-    max_range_m, reserve_m = int(MAX_REMAINING_RANGE_KM * 1000), int(MIN_REMAINING_RANGE_KM * 1000)
+    max_range_m, reserve_m = int(MAX_REMAINING_RANGE_KM * 1000), int(MIN_REMAINING_RANGE_KM * 1000) # 최대 비행가능 거리 및 최소 비행가능 거리에 대한 설정
     routing.AddDimension(ri, max_range_m, max_range_m, False, "RemainingRange")
     rd = routing.GetDimensionOrDie("RemainingRange")
     solver = routing.solver()
