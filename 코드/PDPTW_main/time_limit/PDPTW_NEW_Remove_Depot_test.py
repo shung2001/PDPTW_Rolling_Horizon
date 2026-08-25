@@ -16,7 +16,7 @@ import pandas as pd
 from ortools.constraint_solver import pywrapcp, routing_enums_pb2
 
 
-PROJECT_DIR = Path(__file__).resolve().parents[2]
+PROJECT_DIR = Path(__file__).resolve().parents[3]
 INPUT_DIR = PROJECT_DIR / "자료" / "기초자료"
 REQUEST_PATH = INPUT_DIR / "finalDemand_v5" / "finalDemand_v5" / "d1000_s01.csv"
 DISTANCE_MATRIX_PATH = INPUT_DIR / "distance_matrix_km.csv"
