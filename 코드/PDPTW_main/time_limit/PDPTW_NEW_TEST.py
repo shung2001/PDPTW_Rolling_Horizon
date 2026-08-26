@@ -28,7 +28,7 @@ OUTPUT_DIR = PROJECT_DIR / "자료" / "결과" / "Ortools" / "d1000" / "Penalty_
 BASE_TIME = "05:40"
 END_TIME = "19:16"
 NUM_VEHICLES = 176
-VEHICLE_CAPACITY = 3
+VEHICLE_CAPACITY = 4
 DEPOT_ROUTE_NODE_IDS = list(range(1, 11))
 ROLLING_HORIZON_MINUTES = 30
 REOPTIMIZATION_INTERVAL_MINUTES = 20
@@ -223,7 +223,7 @@ def to_offset_minutes(value: object) -> int:
     result = int(parts[0]) * 60 + int(parts[1]) - base_time_minutes()
     return result + 1440 if result < 0 else result
 
-# objectives의 핵심
+# objectives의 핵심 명명은 drop_penalty라고 했지만, 실제로는 전체 Penalty를 정의 / 정의된 penalty는 394번째 줄에 반영이 됨
 def drop_penalty(batch: BatchState, maximum_max_wait: int) -> int:
     representative = batch.alternatives[0]
     flight_time_matrix = getattr(drop_penalty, "_flight_time_matrix", None)
@@ -353,53 +353,54 @@ def build_horizon_model(active: list[RequestTask], batches: dict[str, BatchState
     ri = routing.RegisterTransitCallback(range_cb) # 비행기 잔여 비행가능 거리 
     routing.SetArcCostEvaluatorOfAllVehicles(di) # distance에 대한 cost 평가
     model_end = he + int(flight_time.to_numpy().max()) * 4 + SERVICE_TIME_MINUTES * 4 # 비행 마무리 시간에 대한 여유 분 제공. -> 일몰 시간(End_Time) 이전의 request_OD를 전부 처리하고 Depot으로 복귀하는 여유시간 
-    routing.AddDimension(ti, model_end, model_end, False, "Time") 
+    routing.AddDimension(ti, model_end, model_end, False, "Time") # 선택한 모든 경로들 model_end 이전에 끝내도록 설정
     td = routing.GetDimensionOrDie("Time")
     max_range_m, reserve_m = int(MAX_REMAINING_RANGE_KM * 1000), int(MIN_REMAINING_RANGE_KM * 1000) # 최대 비행가능 거리 및 최소 비행가능 거리에 대한 설정
-    routing.AddDimension(ri, max_range_m, max_range_m, False, "RemainingRange")
-    rd = routing.GetDimensionOrDie("RemainingRange")
+    routing.AddDimension(ri, max_range_m, max_range_m, False, "RemainingRange") # 각 process마다 계산을 진행
+    rd = routing.GetDimensionOrDie("RemainingRange") # 위의 각 process를 진행할 때마다 값을 축적해서 계산을 진행, 즉, remaining_range를 업데이트
     solver = routing.solver()
     charge_rate_m = int(round(CHARGING_RATE_KM_PER_MIN * 1000))
 
     for v in vehicles:
         si, ei = routing.Start(v.vehicle_id), routing.End(v.vehicle_id)
         start_time = max(hs, v.available_time)
-        td.CumulVar(si).SetValue(start_time)
-        td.CumulVar(ei).SetRange(start_time, model_end)
-        rd.CumulVar(si).SetValue(int(round(v.remaining_range_km * 1000)))
-        rd.CumulVar(ei).SetRange(reserve_m, max_range_m)
-        routing.AddVariableMinimizedByFinalizer(td.CumulVar(ei))
+        td.CumulVar(si).SetValue(start_time) # 각 기체 시작 시간(모두, 5:40에 시작)
+        td.CumulVar(ei).SetRange(start_time, model_end) # 각 기체 시작 및 종료 시간(모두 5:40~19:16으로 설정)
+        rd.CumulVar(si).SetValue(int(round(v.remaining_range_km * 1000))) # 잔여비행거리 설정(모두 시작은 만땅인 160으로 지정)
+        rd.CumulVar(ei).SetRange(reserve_m, max_range_m) # 최소 및 최대 거리(모두 종료는 (최소, 최대) 사이의 범위에 있게 함)
+        routing.AddVariableMinimizedByFinalizer(td.CumulVar(ei)) # solver를 통해 생성된 여러의 rolling_Horizon의 end의 결과값에서 제일 작은 값을 출력
 
     by_batch: dict[str, list[int]] = {}
+    """각 Request_Node의 모든 column을 전처리 작업(Time_Window, pickup & delivery, 비행 조건 등)을 진행"""
     for task in active:
         pnode, dnode = pickup_nodes[task.task_key], delivery_nodes[task.task_key]
         pi, deli = manager.NodeToIndex(pnode), manager.NodeToIndex(dnode)
-        td.CumulVar(pi).SetRange(max(hs, task.departure_time), he)
-        td.CumulVar(deli).SetRange(max(hs, task.arrival_time), min(task.window_end, end_time_minutes()))
+        td.CumulVar(pi).SetRange(max(hs, task.departure_time), he) # 사실상 [이륙 시간, Rolling_Horizon의 end]
+        td.CumulVar(deli).SetRange(max(hs, task.arrival_time), min(task.window_end, end_time_minutes())) # task.window_end에서 arrival_time + max_Wait()가 함유
         routing.AddPickupAndDelivery(pi, deli)
-        solver.Add(routing.VehicleVar(pi) == routing.VehicleVar(deli))
-        solver.Add(td.CumulVar(pi) <= td.CumulVar(deli))
-        solver.Add(routing.ActiveVar(pi) == routing.ActiveVar(deli))
-        routing.AddDisjunction([deli], 0)
-        by_batch.setdefault(task.batch_id, []).append(pi)
+        solver.Add(routing.VehicleVar(pi) == routing.VehicleVar(deli)) # pickup과 Delivery를 같은 차량이 수행
+        solver.Add(td.CumulVar(pi) <= td.CumulVar(deli)) # Pickup과 delivery 이므로 누적시간이 pickup보다 delivery가 더 커야함
+        solver.Add(routing.ActiveVar(pi) == routing.ActiveVar(deli)) # pickup을 실행했다면, 반드시 delivery도 실행.
+        routing.AddDisjunction([deli], 0) # delivery(drop)에 대한 penalty를 0으로 한다.
+        by_batch.setdefault(task.batch_id, []).append(pi) # 위에서 설정한 batch_id를 불러옴
         for idx in (pi, deli):
             rd.CumulVar(idx).SetRange(reserve_m, max_range_m)
-            rd.SlackVar(idx).SetRange(0, max_range_m)
-            solver.Add(rd.SlackVar(idx) <= charge_rate_m * (td.SlackVar(idx) + BOARDING_CHARGE_MINUTES))
-            solver.Add(rd.CumulVar(idx) + rd.SlackVar(idx) <= max_range_m)
+            rd.SlackVar(idx).SetRange(0, max_range_m) # 대기 시간동안 허용되는 배터리 충전 범위 / 하지만, 밑에 추가 조건이 존재
+            solver.Add(rd.SlackVar(idx) <= charge_rate_m * (td.SlackVar(idx) + BOARDING_CHARGE_MINUTES)) # 대기시간동안 충전되는 양 <= 4.267 * (대기시간 + 승하차_시간동안의 충전) 
+            solver.Add(rd.CumulVar(idx) + rd.SlackVar(idx) <= max_range_m) # 기존 잔량 + 대기 시간동안의 충전된 양이 max_range이전까지여야 함.
 
     for batch_id, pickup_indices in by_batch.items():
         penalty = drop_penalty(batches[batch_id], maximum_max_wait)
-        routing.AddDisjunction(pickup_indices, penalty, 1)
+        routing.AddDisjunction(pickup_indices, penalty, 1) # 실제 반영은 이곳에서 진행
 
     demands = [0] * cursor
     for node, (event, task) in node_meta.items():
         demands[node] = task.passengers if event == "Pickup" else -task.passengers  # type: ignore[union-attr]
     demand_idx = routing.RegisterUnaryTransitCallback(lambda index: demands[manager.IndexToNode(index)])
     routing.AddDimensionWithVehicleCapacity(demand_idx, 0, [VEHICLE_CAPACITY] * vehicle_count, True, "Capacity")
-    return HorizonModel(manager, routing, td, rd, node_meta, pickup_nodes, delivery_nodes)
+    return HorizonModel(manager, routing, td, rd, node_meta, pickup_nodes, delivery_nodes) 
 
-
+# 여기서 계산을 진행
 def solve_horizon(model: HorizonModel):
     p = pywrapcp.DefaultRoutingSearchParameters()
     p.first_solution_strategy = routing_enums_pb2.FirstSolutionStrategy.PARALLEL_CHEAPEST_INSERTION
@@ -437,7 +438,7 @@ def charge_for_departure(current_range: float, distance_km: float) -> tuple[int,
     minutes = int(math.ceil(max(0.0, target - current_range) / CHARGING_RATE_KM_PER_MIN))
     return minutes, min(MAX_REMAINING_RANGE_KM, current_range + minutes * CHARGING_RATE_KM_PER_MIN)
 
-# 각 구간마다 진행할 예정의 건수를 출력
+# 각 구간마다 진행할 예정의 건수를 출력 / 여기서부터 다시 봐야지 아 진짜 하기 싫다.
 def commit_routes(route_events: list[dict[str, Any]], vehicles: list[VehicleState], distance: pd.DataFrame, flight_time: pd.DataFrame, nodes: dict[str, NodeInfo], commit_end: int, log_rows: list[dict[str, Any]], batches: dict[str, BatchState]) -> int:
     state_by_id = {v.vehicle_id: v for v in vehicles}
     committed = 0
@@ -638,16 +639,27 @@ def occupancy_dataframe(route_df: pd.DataFrame, nodes: dict[str, NodeInfo], vehi
     return result[columns]
 
 
-def vehicle_summary_dataframe(route_df: pd.DataFrame, vehicles: list[VehicleState]) -> pd.DataFrame:
+def vehicle_summary_dataframe(route_df: pd.DataFrame, vehicles: list[VehicleState], batches: dict[str, BatchState]) -> pd.DataFrame:
     rows = []
     for state in vehicles:
+        total_passengers = sum(
+            next(
+                (
+                task.passengers
+                for task in batch.alternatives
+                if task.request_id == batch.selected_request_id
+            ),
+            0
+        )
+        for batch in batches.values()
+        if batch.assigned_vehicle_id == state.vehicle_id
+        and batch.status == "Complete"
+        )
         vr = route_df[route_df["vehicle_id"] == state.vehicle_id] if not route_df.empty else pd.DataFrame()
         movement = vr[vr["event"] == "Movement"] if not vr.empty else pd.DataFrame()
         passenger = movement[movement["movement_type"] == "passenger_flight"] if not movement.empty else pd.DataFrame()
         empty = movement[movement["movement_type"].isin(["empty_repositioning", "return_to_depot"])] if not movement.empty else pd.DataFrame()
-        """"""  # 변경 시작: vehicle_summary.csv에 실제 Movement 횟수와 그중 승객 탑승 passenger_flight 횟수를 추가한다.
-        rows.append({"vehicle_id": state.vehicle_id, "home_depot": state.home_depot, "final_node": state.route_node_id, "final_available_time": state.available_time, "final_remaining_range_km": round(state.remaining_range_km, 3), "Movement": int(len(movement)) if not movement.empty else 0, "Passenger": int(len(passenger)) if not passenger.empty else 0, "total_flight_time_min": int(movement["travel_time"].sum()) if not movement.empty else 0, "total_flight_distance_km": round(float(movement["travel_distance_km"].sum()), 3) if not movement.empty else 0.0, "passenger_flight_distance_km": round(float(passenger["travel_distance_km"].sum()), 3) if not passenger.empty else 0.0, "empty_flight_distance_km": round(float(empty["travel_distance_km"].sum()), 3) if not empty.empty else 0.0, "charging_time_min": int(vr["charging_time"].sum()) if not vr.empty else 0, "pickup_count": int((vr["event"] == "Pickup").sum()) if not vr.empty else 0, "delivery_count": int((vr["event"] == "Delivery").sum()) if not vr.empty else 0})
-        """"""  # 변경 끝: Movement는 전체 실제 비행 Movement 수, Passenger는 movement_type이 passenger_flight인 Movement 수이다.
+        rows.append({"vehicle_id": state.vehicle_id, "home_depot": state.home_depot, "final_node": state.route_node_id, "final_available_time": state.available_time, "Total_Passenger":total_passengers, "Movement": int(len(movement)) if not movement.empty else 0, "Passenger_Movement": int(len(passenger)) if not passenger.empty else 0, "Empty_Movemetn": int(len(empty)),"total_flight_time_min": int(movement["travel_time"].sum()) if not movement.empty else 0, "total_flight_distance_km": round(float(movement["travel_distance_km"].sum()), 3) if not movement.empty else 0.0, "passenger_flight_distance_km": round(float(passenger["travel_distance_km"].sum()), 3) if not passenger.empty else 0.0, "empty_flight_distance_km": round(float(empty["travel_distance_km"].sum()), 3) if not empty.empty else 0.0, "charging_time_min": int(vr["charging_time"].sum()) if not vr.empty else 0, "pickup_count": int((vr["event"] == "Pickup").sum()) if not vr.empty else 0, "delivery_count": int((vr["event"] == "Delivery").sum()) if not vr.empty else 0})
     return pd.DataFrame(rows)
 
 
