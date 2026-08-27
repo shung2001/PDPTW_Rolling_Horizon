@@ -274,7 +274,7 @@ def Pending_Cost(batch: BatchState, fare_matrix: pd.DataFrame, revenue: int):
     passengers = representative.passengers
     vot = Value_Of_Time(batch, fare_matrix, revenue)
 
-    return int(vot * Number_Of_Pending * passengers)
+    return int(vot * Number_Of_Pending * REOPTIMIZATION_INTERVAL_MINUTES * passengers)
 
 def Drop_Cost(batch: BatchState, revenue:int):
     representative = batch.alternatives[0]
@@ -371,7 +371,7 @@ def load_tasks(request_path: Path, distance: pd.DataFrame, flight_time: pd.DataF
 
 
 
-def build_horizon_model(active: list[RequestTask], batches: dict[str, BatchState], vehicles: list[VehicleState], distance: pd.DataFrame, flight_time: pd.DataFrame, hs: int, he: int, maximum_max_wait: int, return_to_home: bool = False) -> HorizonModel:
+def build_horizon_model(active: list[RequestTask], batches: dict[str, BatchState], vehicles: list[VehicleState], distance: pd.DataFrame, flight_time: pd.DataFrame, fare_matrix: pd.DataFrame, hs: int, he: int, maximum_max_wait: int, return_to_home: bool = False) -> HorizonModel:
     vehicle_count = len(vehicles)
     starts = list(range(vehicle_count)) # starts 와 ends는 궁극적으로 depot이므로 각 차량 수 만큼 가상의 depot node를 생성해야한다. 단, 아직 실제 node로 변환 된 것은 아님. def location(model_node:int)를 참조
     ends = list(range(vehicle_count, vehicle_count * 2))
@@ -418,7 +418,7 @@ def build_horizon_model(active: list[RequestTask], batches: dict[str, BatchState
 
         if not return_to_home and vehicle_count <= t <vehicle_count * 2:
             return 0
-        flight_min = int(flight_time.flight_time.loc[location(f), location(t)])
+        flight_min = int(flight_time.loc[location(f), location(t)])
         return HOVERING_LIFT_OFF_COST + flight_min * (MIN_PER_OPERATING + MIN_PER_MECHANIC)
     
     def range_cb(fi: int, ti: int) -> int: # 각 경로별 거리 출력 이 거리를 통해 vehicle의 잔여 비행가능 거리를 업데이트 
@@ -467,7 +467,7 @@ def build_horizon_model(active: list[RequestTask], batches: dict[str, BatchState
             solver.Add(rd.CumulVar(idx) + rd.SlackVar(idx) <= max_range_m) # 기존 잔량 + 대기 시간동안의 충전된 양이 max_range이전까지여야 함.
 
     for batch_id, pickup_indices in by_batch.items():
-        penalty = total_adddisjunction_cost()
+        penalty = total_adddisjunction_cost(batches[batch_id], fare_matrix, REVENUE)
         routing.AddDisjunction(pickup_indices, penalty, 1) # 실제 반영은 이곳에서 진행
 
     demands = [0] * cursor
@@ -637,12 +637,12 @@ def format_hhmm(value: int | None) -> str:
     return f"{(absolute // 60) % 24:02d}:{absolute % 60:02d}"
 
 
-def batch_dataframe(batches: dict[str, BatchState], maximum_max_wait: int) -> pd.DataFrame:
+def batch_dataframe(batches: dict[str, BatchState], maximum_max_wait: int, fare_matrix: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for batch in batches.values():
         selected = next((t for t in batch.alternatives if t.request_id == batch.selected_request_id), batch.alternatives[0])
         # [추가 수정 1] rolling_horizon_request_status.csv에 각 Request의 원래 Delivery Time Window를 분 단위와 HH:MM 형식으로 함께 출력한다.
-        rows.append({"batch_id": batch.batch_id, "selected_request_id": batch.selected_request_id, "origin": selected.origin, "destination": selected.destination, "max_wait": selected.max_wait_min, "time_window_start": selected.arrival_time, "time_window_start_hhmm": format_hhmm(selected.arrival_time), "time_window_end": selected.window_end, "time_window_end_hhmm": format_hhmm(selected.window_end), "Transportation_min": selected.transportation_min, "Joby_min": selected.joby_min, "Transportation_Joby_time_saving": selected.transportation_min - selected.joby_min, "pending_count": batch.pending_count, "final_drop_penalty": drop_penalty(batch, maximum_max_wait), "assigned_vehicle": batch.assigned_vehicle_id, "pickup_time": batch.pickup_time, "pickup_time_hhmm": format_hhmm(batch.pickup_time), "delivery_time": batch.delivery_time, "delivery_time_hhmm": format_hhmm(batch.delivery_time), "final_status": batch.status})
+        rows.append({"batch_id": batch.batch_id, "selected_request_id": batch.selected_request_id, "origin": selected.origin, "destination": selected.destination, "max_wait": selected.max_wait_min, "time_window_start": selected.arrival_time, "time_window_start_hhmm": format_hhmm(selected.arrival_time), "time_window_end": selected.window_end, "time_window_end_hhmm": format_hhmm(selected.window_end), "Transportation_min": selected.transportation_min, "Joby_min": selected.joby_min, "Transportation_Joby_time_saving": selected.transportation_min - selected.joby_min, "pending_count": batch.pending_count, "final_drop_penalty": total_adddisjunction_cost(batch, fare_matrix, REVENUE), "assigned_vehicle": batch.assigned_vehicle_id, "pickup_time": batch.pickup_time, "pickup_time_hhmm": format_hhmm(batch.pickup_time), "delivery_time": batch.delivery_time, "delivery_time_hhmm": format_hhmm(batch.delivery_time), "final_status": batch.status})
         # [추가 수정 1 끝] time_window_start=arrival_time, time_window_end=arrival_time+max_wait이며 기존 계산/상태/패널티 로직은 변경하지 않는다.
     return pd.DataFrame(rows)
 
@@ -754,6 +754,7 @@ def main() -> None:
     started = time.perf_counter()
     distance, flight_time, nodes = load_matrix(DISTANCE_MATRIX_PATH, False), load_matrix(TIME_MATRIX_PATH, True), load_nodes(NODE_REFERENCE_PATH)
     transportation_matrix = load_named_matrix(TRANSPORTATION_MATRIX_PATH, nodes)
+    fare_matrix = load_named_matrix(TRANSPORTATION_MATRIX_COST, nodes)
     if set(distance.index) != set(flight_time.index) or not set(distance.index).issubset(nodes):
         raise ValueError("distance/time/node-reference의 node 집합이 일치하지 않습니다")
     depots = [normalize_id(v) for v in DEPOT_ROUTE_NODE_IDS]
@@ -811,7 +812,7 @@ def main() -> None:
             tick = time.perf_counter()
             """변경 시작: 중간 RH는 Open End, 마지막 처리 가능 RH는 최초 home_depot을 End로 설정"""
             return_to_home = he >= simulation_end
-            model = build_horizon_model(active, batches, vehicles, distance, flight_time, hs, he, maximum_max_wait, return_to_home)
+            model = build_horizon_model(active, batches, vehicles, distance, flight_time, fare_matrix, hs, he, maximum_max_wait, return_to_home)
             """변경 끝"""
             solution = solve_horizon(model)
             runtime = time.perf_counter() - tick
@@ -820,7 +821,7 @@ def main() -> None:
             committed = commit_routes(routes, vehicles, distance, flight_time, nodes, commit_end, logs, batches)
             for task in active:
                 planned_pickup_time = next((int(row["time"]) for row in routes if row["event"] == "Pickup" and row["task"].task_key == task.task_key), None)
-                plans.append({"horizon_start": hs, "horizon_end": he, "request_id": task.request_id, "batch_id": task.batch_id, "planned_visit": task.task_key in selected, "planned_pickup_time": planned_pickup_time, "committed": planned_pickup_time is not None and planned_pickup_time < commit_end and task.status == "Complete", "drop_penalty": drop_penalty(batches[task.batch_id], maximum_max_wait)})
+                plans.append({"horizon_start": hs, "horizon_end": he, "request_id": task.request_id, "batch_id": task.batch_id, "planned_visit": task.task_key in selected, "planned_pickup_time": planned_pickup_time, "committed": planned_pickup_time is not None and planned_pickup_time < commit_end and task.status == "Complete", "drop_penalty": total_adddisjunction_cost(batches[task.batch_id], fare_matrix, REVENUE)})
         elif LOG_ROLLING_HORIZON:
             print("활성 Request가 없어 Solver 실행을 건너뜁니다.", flush=True)
 
@@ -943,7 +944,7 @@ def main() -> None:
         ]
 
 
-    save_csv(batch_dataframe(batches, maximum_max_wait), "rolling_horizon_request_status.csv")
+    save_csv(batch_dataframe(batches, maximum_max_wait, fare_matrix), "rolling_horizon_request_status.csv")
     save_csv(route_output_df, "vehicle_route_legs.csv")
     save_csv(pd.DataFrame(plans), "rolling_horizon_plan_history.csv")
     save_csv(pd.DataFrame(summaries), "rolling_horizon_summary.csv")
