@@ -1,15 +1,12 @@
-"""ODsay 대중교통 길찾기 API로 OD 시간/거리/요금 행렬을 생성한다.
+"""TMAP 대중교통 API로 OD 시간/요금 행렬을 생성한다.
 
 입력 CSV에는 ``lat``, ``lon`` 열이 필요하며, 행/열 이름은 ``vpname`` 또는
 ``vp_id``를 사용한다. 각 요청이 성공할 때마다 결과를 저장하므로 중단 후
 ``--resume`` 옵션으로 이어서 실행할 수 있다.
 
 실행 예시 (PowerShell):
-    $env:ODSAY_API_KEY="발급받은_SERVER_API_KEY"
-    python "코드/Time_matrix_From_ODsay.py" --resume
-
-주의: 이 스크립트처럼 Python에서 호출할 때는 ODsay의 Server 키와 등록된
-공인 IP가 필요하다.
+    TMAP_APP_KEY 환경 변수에 발급받은 AppKey를 지정한 뒤 실행한다.
+    python "코드/Time_Cost_matrix_From_Tmap.py" --resume
 """
 
 from __future__ import annotations
@@ -25,39 +22,41 @@ import time
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 
-API_URL = "https://api.odsay.com/v1/api/searchPubTransPathT"
+API_URL = "https://apis.openapi.sk.com/transit/routes"
+CONFIG = {
+    "api_key": "USukMvWK035rjx8kD2vGs7r6y1woFY7k3wx0JPnY",
+}
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = SCRIPT_DIR.parent
 DEFAULT_INPUT = PROJECT_DIR / "자료" / "기초자료" / "vp_reference.csv"
-DEFAULT_OUTPUT_MIN = PROJECT_DIR / "자료" / "결과" / "public_transit_time_matrix_min.csv"
-DEFAULT_OUTPUT_KM = PROJECT_DIR / "자료" / "결과" / "public_transit_distance_matrix_km.csv"
-DEFAULT_OUTPUT_FARE = PROJECT_DIR / "자료" / "결과" / "public_transit_fare_matrix_krw.csv"
+DEFAULT_OUTPUT_MIN = PROJECT_DIR / "자료" / "결과" / "public_transit_time_matrix_tmap_min.csv"
+DEFAULT_OUTPUT_FARE = PROJECT_DIR / "자료" / "결과" / "public_transit_fare_matrix_tmap_krw.csv"
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="ODsay 대중교통 길찾기를 OD별로 호출하여 시간/거리/요금 행렬 생성"
+        description="TMAP 대중교통 길찾기를 OD별로 호출하여 시간/요금 행렬 생성"
     )
     parser.add_argument("--input", type=Path, default=DEFAULT_INPUT)
     parser.add_argument("--output-min", type=Path, default=DEFAULT_OUTPUT_MIN)
-    parser.add_argument("--output-km", type=Path, default=DEFAULT_OUTPUT_KM)
-    parser.add_argument("--output-fare", type=Path, default=DEFAULT_OUTPUT_FARE,
-                        help="원 단위 구간별 요금 행렬 CSV 경로")
-    parser.add_argument("--opt", type=int, choices=(0, 1), default=0,
-                        help="0: 추천경로, 1: 교통수단 유형별 정렬")
-    parser.add_argument("--search-type", type=int, default=0,
-                        help="ODsay SearchType 값(기본 0: 도시내 검색)")
-    parser.add_argument("--path-type", type=int, choices=(0, 1, 2), default=0,
-                        help="0: 전체, 1: 지하철, 2: 버스")
+    parser.add_argument("--output-fare", type=Path, default=DEFAULT_OUTPUT_FARE)
+    parser.add_argument(
+        "--api-key",
+        default=os.environ.get("TMAP_APP_KEY", CONFIG.get("api_key", "")),
+        help="TMAP AppKey (기본값: TMAP_APP_KEY 환경 변수)",
+    )
     parser.add_argument("--retries", type=int, default=4)
     parser.add_argument("--request-interval", type=float, default=0.2)
     parser.add_argument("--resume", action="store_true",
                         help="기존 행렬의 빈 OD만 다시 계산")
     return parser.parse_args()
+
+
+class TmapAuthenticationError(RuntimeError):
+    """TMAP AppKey가 없거나 유효하지 않을 때 발생한다."""
 
 
 def read_points(path: Path) -> list[dict[str, Any]]:
@@ -98,62 +97,57 @@ def read_points(path: Path) -> list[dict[str, Any]]:
     return points
 
 
-def _api_error(data: dict[str, Any]) -> str | None:
-    error = data.get("error")
-    if not error:
-        return None
-    if isinstance(error, list):
-        return "; ".join(
-            f"[{item.get('code')}] {item.get('message')}" for item in error
-            if isinstance(item, dict)
-        ) or str(error)
-    if isinstance(error, dict):
-        return f"[{error.get('code')}] {error.get('msg') or error.get('message')}"
-    return str(error)
-
-
 def request_route(
     origin: dict[str, Any],
     destination: dict[str, Any],
     api_key: str,
-    opt: int,
-    search_type: int,
-    path_type: int,
     retries: int,
-) -> tuple[float, float, float]:
-    query = urlencode({
-        "SX": origin["lon"], "SY": origin["lat"],
-        "EX": destination["lon"], "EY": destination["lat"],
-        "OPT": opt, "SearchType": search_type,
-        "SearchPathType": path_type, "lang": 0,
-        "output": "json", "apiKey": api_key,
-    })
-    request = Request(f"{API_URL}?{query}", headers={"Accept": "application/json"})
+) -> tuple[float, float]:
+    body = json.dumps({
+        "startX": str(origin["lon"]),
+        "startY": str(origin["lat"]),
+        "endX": str(destination["lon"]),
+        "endY": str(destination["lat"]),
+        "count": 1,
+        "lang": 0,
+        "format": "json",
+    }).encode("utf-8")
+    request = Request(
+        API_URL,
+        data=body,
+        headers={
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "appKey": api_key,
+        },
+        method="POST",
+    )
 
     error: Exception = RuntimeError("알 수 없는 오류")
     for attempt in range(retries + 1):
         try:
             with urlopen(request, timeout=30) as response:
                 data = json.loads(response.read().decode("utf-8"))
-            message = _api_error(data)
-            if message:
-                raise RuntimeError(f"ODsay API 오류: {message}")
-            paths = data.get("result", {}).get("path") or []
-            if not paths:
+            itineraries = data.get("metaData", {}).get("plan", {}).get("itineraries") or []
+            if not itineraries:
                 raise RuntimeError(f"검색된 대중교통 경로가 없습니다: {data}")
-            info = paths[0].get("info") or {}
-            # totalTime은 분, totalDistance는 미터, payment는 원 단위이다.
-            return (
-                float(info["totalTime"]),
-                float(info["totalDistance"]) / 1000.0,
-                float(info["payment"]),
-            )
+            itinerary = itineraries[0]
+            duration_min = float(itinerary["totalTime"]) / 60.0
+            fare_krw = float(itinerary["fare"]["regular"]["totalFare"])
+            return duration_min, fare_krw
         except HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
-            error = RuntimeError(f"ODsay API HTTP {exc.code}: {detail}")
+            error = RuntimeError(f"TMAP API HTTP {exc.code}: {detail}")
+            if exc.code in (401, 403):
+                raise TmapAuthenticationError(
+                    f"TMAP API 인증 실패(HTTP {exc.code}). "
+                    "유효한 AppKey를 --api-key 또는 TMAP_APP_KEY로 지정하세요.\n"
+                    f"서버 응답: {detail}"
+                ) from exc
             if exc.code < 500 and exc.code != 429:
                 raise error from exc
-        except (URLError, TimeoutError, json.JSONDecodeError, KeyError, RuntimeError) as exc:
+        except (URLError, TimeoutError, json.JSONDecodeError, KeyError,
+                TypeError, ValueError, RuntimeError) as exc:
             error = exc
 
         if attempt == retries:
@@ -209,9 +203,8 @@ def write_matrix(path: Path, labels: list[str], matrix: list[list[float]], digit
 
 
 def save_all(args: argparse.Namespace, labels: list[str], minutes: list[list[float]],
-             distances: list[list[float]], fares: list[list[float]]) -> None:
+             fares: list[list[float]]) -> None:
     write_matrix(args.output_min.resolve(), labels, minutes, 2)
-    write_matrix(args.output_km.resolve(), labels, distances, 3)
     write_matrix(args.output_fare.resolve(), labels, fares, 0)
 
 
@@ -219,21 +212,20 @@ def main() -> None:
     args = parse_args()
     if args.retries < 0 or args.request_interval < 0:
         raise ValueError("retries와 request-interval은 0 이상이어야 합니다")
-    api_key = "UORTe4wT/BDWbHKz5IEp01CaI73RtcttDMIk27JXJLY"
+    api_key = str(args.api_key).strip()
     if not api_key:
-        raise RuntimeError("환경 변수 ODSAY_API_KEY를 설정해 주세요")
-
+        raise SystemExit(
+            "TMAP AppKey가 없습니다. --api-key 옵션 또는 TMAP_APP_KEY 환경 변수로 지정하세요."
+        )
     points = read_points(args.input.resolve())
     labels = [point["label"] for point in points]
     minutes = load_matrix(args.output_min.resolve(), labels) if args.resume else empty_matrix(len(points))
-    distances = load_matrix(args.output_km.resolve(), labels) if args.resume else empty_matrix(len(points))
     fares = load_matrix(args.output_fare.resolve(), labels) if args.resume else empty_matrix(len(points))
 
     total = len(points) * (len(points) - 1)
     completed = sum(
         1 for i in range(len(points)) for j in range(len(points))
-        if (i != j and not math.isnan(minutes[i][j])
-            and not math.isnan(distances[i][j]) and not math.isnan(fares[i][j]))
+        if i != j and not math.isnan(minutes[i][j]) and not math.isnan(fares[i][j])
     )
     failures: list[tuple[str, str, str]] = []
     print(f"총 {total}개 OD 중 {completed}개 완료, {total - completed}개 계산 시작")
@@ -241,35 +233,35 @@ def main() -> None:
     for i, origin in enumerate(points):
         for j, destination in enumerate(points):
             if (i == j or (not math.isnan(minutes[i][j])
-                           and not math.isnan(distances[i][j])
                            and not math.isnan(fares[i][j]))):
                 continue
             print(f"[{completed + 1}/{total}] {origin['label']} -> {destination['label']}")
             try:
-                duration_min, distance_km, fare_krw = request_route(
-                    origin, destination, api_key, args.opt, args.search_type,
-                    args.path_type, args.retries,
+                duration_min, fare_krw = request_route(
+                    origin, destination, api_key, args.retries
                 )
                 minutes[i][j] = duration_min
-                distances[i][j] = distance_km
                 fares[i][j] = fare_krw
                 completed += 1
-                print(f"    {duration_min:.2f}분, {distance_km:.3f}km, {fare_krw:.0f}원")
-                save_all(args, labels, minutes, distances, fares)
+                print(f"    {duration_min:.2f}분, {fare_krw:.0f}원")
+                save_all(args, labels, minutes, fares)
+            except TmapAuthenticationError as exc:
+                save_all(args, labels, minutes, fares)
+                raise SystemExit(str(exc)) from exc
             except RuntimeError as exc:
                 failures.append((origin["label"], destination["label"], str(exc)))
                 print(f"    최종 실패: {exc}", file=sys.stderr)
             if args.request_interval:
                 time.sleep(args.request_interval)
 
-    save_all(args, labels, minutes, distances, fares)
+    save_all(args, labels, minutes, fares)
     print(f"\n분 단위 시간 행렬: {args.output_min.resolve()}")
-    print(f"km 단위 거리 행렬: {args.output_km.resolve()}")
     print(f"원 단위 요금 행렬: {args.output_fare.resolve()}")
     if failures:
         print(f"실패 OD: {len(failures)}개 (--resume으로 재시도 가능)", file=sys.stderr)
         for origin, destination, error in failures:
             print(f"  {origin} -> {destination}: {error}", file=sys.stderr)
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

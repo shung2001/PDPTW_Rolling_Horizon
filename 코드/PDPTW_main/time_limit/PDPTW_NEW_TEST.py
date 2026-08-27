@@ -22,7 +22,8 @@ REQUEST_PATH = INPUT_DIR / "finalDemand_v5" / "finalDemand_v5" / "d5000_s01.csv"
 DISTANCE_MATRIX_PATH = INPUT_DIR / "distance_matrix_km.csv"
 TIME_MATRIX_PATH = INPUT_DIR / "flight_time_matrix_min_remove_fuel.csv"
 NODE_REFERENCE_PATH = INPUT_DIR / "vp_reference.csv"
-TRANSPORTATION_MATRIX_PATH = PROJECT_DIR / "자료" / "결과" / "차량_교통수단" /"public_transit_time_matrix_min.csv"
+TRANSPORTATION_MATRIX_PATH = PROJECT_DIR / "자료" / "결과" / "차량_교통수단" /"public_transit_time_matrix_tmap_min.csv"
+TRANSPORTATION_MATRIX_COST = PROJECT_DIR / "자료" / "결과" / "차량_교통수단" / "public_transit_fare_matrix_tmap_krw.csv"
 OUTPUT_DIR = PROJECT_DIR / "자료" / "결과" / "Ortools" / "d1000" / "Penalty_Per_Vehicles" / "Original" / "Pending" / "100000"
 
 BASE_TIME = "05:40"
@@ -37,6 +38,10 @@ TIME_LIMIT_SECONDS = 10
 SERVICE_TIME_MINUTES = 3
 BOARDING_CHARGE_MINUTES = 2
 TAXI_TIME_MINUTES = 1
+REVENUE = 100000
+HOVERING_LIFT_OFF_COST = 18404
+MIN_PER_OPERATING = 1247
+MIN_PER_MECHANIC = 9140
 BASE_DROP_PENALTY = 1_000_000
 PENDING_PENALTY_PER_COUNT = 10_000
 MAX_WAIT_PENALTY_WEIGHT = 1_000
@@ -233,6 +238,69 @@ def drop_penalty(batch: BatchState, maximum_max_wait: int) -> int:
     joby_min = float(flight_time_matrix.loc[representative.origin, representative.destination])
     return int(BASE_DROP_PENALTY + PENDING_PENALTY_PER_COUNT * batch.pending_count + MAX_WAIT_PENALTY_WEIGHT * (maximum_max_wait - representative.max_wait_min) + TRANSPORTATION_JOBY_PENALTY_WEIGHT * (representative.transportation_min - joby_min))
 
+def Value_Of_Time(
+    batch: BatchState,
+    fare_matrix: pd.DataFrame,
+    revenue: int
+) -> float:
+
+    representative = batch.alternatives[0]
+
+    public_transit_fare = float(
+        fare_matrix.loc[
+            representative.origin,
+            representative.destination
+        ]
+    )
+
+    time_saving = (
+        representative.transportation_min
+        - representative.joby_min
+    )
+
+    if time_saving <= 0:
+        return 0.0
+
+    vot = (
+        revenue - public_transit_fare
+    ) / time_saving
+
+    return vot
+
+
+def Pending_Cost(batch: BatchState, fare_matrix: pd.DataFrame, revenue: int):
+    representative = batch.alternatives[0]
+    Number_Of_Pending = batch.pending_count
+    passengers = representative.passengers
+    vot = Value_Of_Time(batch, fare_matrix, revenue)
+
+    return int(vot * Number_Of_Pending * passengers)
+
+def Drop_Cost(batch: BatchState, revenue:int):
+    representative = batch.alternatives[0]
+    passengers = representative.passengers
+    cost = revenue
+
+    return int(passengers * cost)
+
+def Tranportation_Joby_fare(batch: BatchState, fare_matrix: pd.DataFrame, revenue: int):
+    representative = batch.alternatives[0]
+    transportation_time = representative.transportation_min
+    joby_min = representative.joby_min
+    Vot = Value_Of_Time(batch, fare_matrix, revenue)
+    passengers = representative.passengers
+
+    return int(Vot * (transportation_time - joby_min) * passengers)
+
+
+def total_adddisjunction_cost(batch: BatchState, fare_matrix: pd.DataFrame, revenue: int):
+    Pending_Cost_1 = Pending_Cost(batch, fare_matrix, revenue)
+    Drop_Cost_1 = Drop_Cost(batch, revenue)
+    Tranportation_Joby_fare_1 = Tranportation_Joby_fare(batch, fare_matrix, revenue)
+
+    return int(Pending_Cost_1 + Drop_Cost_1 + Tranportation_Joby_fare_1)
+
+
 """ main에서 생성한 DataFrame을 가져옴. 최종적으로 Request OD에 대한 batch를 생성하기 위함. 왜냐하면, Request_OD가 1->2 일 때 passenger가 4명이면 [3,1]로 분리를 해야하므로 이때 사용하는 게 Batch"""
 def load_tasks(request_path: Path, distance: pd.DataFrame, flight_time: pd.DataFrame, nodes: dict[str, NodeInfo], transportation_matrix: pd.DataFrame | None = None) -> tuple[list[RequestTask], dict[str, BatchState]]:
     raw = read_table(request_path) # d5000.csv를 가져옴
@@ -344,6 +412,14 @@ def build_horizon_model(active: list[RequestTask], batches: dict[str, BatchState
         if not return_to_home and vehicle_count <= t < vehicle_count * 2: # 각 RH 당 형식상 depot이 필요하다. 따라서, 가상의 depot을 생성해 (마지막_노드) -> (가상_Depot)을 0으로 설정
             return 0
         return int(round(float(distance.loc[location(f), location(t)]) * 1000))
+
+    def cost_cb(fi: int, ti:int) -> int:
+        f, t = manager.IndexToNode(fi), manager.IndexToNode(ti)
+
+        if not return_to_home and vehicle_count <= t <vehicle_count * 2:
+            return 0
+        flight_min = int(flight_time.flight_time.loc[location(f), location(t)])
+        return HOVERING_LIFT_OFF_COST + flight_min * (MIN_PER_OPERATING + MIN_PER_MECHANIC)
     
     def range_cb(fi: int, ti: int) -> int: # 각 경로별 거리 출력 이 거리를 통해 vehicle의 잔여 비행가능 거리를 업데이트 
         return -distance_cb(fi, ti) # 각 경로별 거리 출력 이 거리를 통해 vehicle의 잔여 비행가능 거리를 업데이트 
@@ -351,7 +427,8 @@ def build_horizon_model(active: list[RequestTask], batches: dict[str, BatchState
     ti = routing.RegisterTransitCallback(time_cb) # 누적 비행 시간
     di = routing.RegisterTransitCallback(distance_cb) # 경로별 거리
     ri = routing.RegisterTransitCallback(range_cb) # 비행기 잔여 비행가능 거리 
-    routing.SetArcCostEvaluatorOfAllVehicles(di) # distance에 대한 cost 평가
+    ci = routing.RegisterTransitCallback(cost_cb)
+    routing.SetArcCostEvaluatorOfAllVehicles(ci) # distance에 대한 cost 평가
     model_end = he + int(flight_time.to_numpy().max()) * 4 + SERVICE_TIME_MINUTES * 4 # 비행 마무리 시간에 대한 여유 분 제공. -> 일몰 시간(End_Time) 이전의 request_OD를 전부 처리하고 Depot으로 복귀하는 여유시간 
     routing.AddDimension(ti, model_end, model_end, False, "Time") # 선택한 모든 경로들 model_end 이전에 끝내도록 설정
     td = routing.GetDimensionOrDie("Time")
@@ -390,7 +467,7 @@ def build_horizon_model(active: list[RequestTask], batches: dict[str, BatchState
             solver.Add(rd.CumulVar(idx) + rd.SlackVar(idx) <= max_range_m) # 기존 잔량 + 대기 시간동안의 충전된 양이 max_range이전까지여야 함.
 
     for batch_id, pickup_indices in by_batch.items():
-        penalty = drop_penalty(batches[batch_id], maximum_max_wait)
+        penalty = total_adddisjunction_cost()
         routing.AddDisjunction(pickup_indices, penalty, 1) # 실제 반영은 이곳에서 진행
 
     demands = [0] * cursor
@@ -438,20 +515,22 @@ def charge_for_departure(current_range: float, distance_km: float) -> tuple[int,
     minutes = int(math.ceil(max(0.0, target - current_range) / CHARGING_RATE_KM_PER_MIN))
     return minutes, min(MAX_REMAINING_RANGE_KM, current_range + minutes * CHARGING_RATE_KM_PER_MIN)
 
-# 각 구간마다 진행할 예정의 건수를 출력 / 여기서부터 다시 봐야지 아 진짜 하기 싫다.
+# 각 구간마다 진행할 예정의 건수를 출력
 def commit_routes(route_events: list[dict[str, Any]], vehicles: list[VehicleState], distance: pd.DataFrame, flight_time: pd.DataFrame, nodes: dict[str, NodeInfo], commit_end: int, log_rows: list[dict[str, Any]], batches: dict[str, BatchState]) -> int:
-    state_by_id = {v.vehicle_id: v for v in vehicles}
-    committed = 0
+    state_by_id = {v.vehicle_id: v for v in vehicles} # 각 자동차_id에 기록된 state를 부여 
+    committed = 0 # pickup이 확정된 경우를 committed라고 한다. 이때, committed가 되지 않은 경우 Pending 혹은 Overdue가 됨. 주된 목적은 RH가 겹치므로 겹치는 구간에 대해 먼저 경로 계산 및 기록 이후에 겹친 구간에 대해 Pending 등의 Penalty를 부여
     grouped: dict[int, list[dict[str, Any]]] = {}
     for row in route_events:
         grouped.setdefault(row["vehicle_id"], []).append(row)
     for vehicle_id, events in grouped.items():
         state = state_by_id[vehicle_id]
-        chosen = {r["task"].task_key for r in events if r["event"] == "Pickup" and r["time"] < commit_end}
-        if not chosen:
+        chosen = {r["task"].task_key for r in events if r["event"] == "Pickup" and r["time"] < commit_end} # commit_end는 Reoptimization의 시작 부근까지 진행. 겹치는 구간은 계산만 진행 -> Pending(우선권)을 부여.
+        if not chosen: # 즉, Pickup이 commit 이전까지 진행된 것들만 추려둔다.
             continue
-        projected_node, projected_time, projected_remaining = state.route_node_id, state.available_time, state.remaining_range_km
-        late_task_keys: set[str] = set()
+
+        projected_node, projected_time, projected_remaining = state.route_node_id, state.available_time, state.remaining_range_km 
+        late_task_keys: set[str] = set() # END_TIME보다 늦게 도착한 Delivery에 대한 list 추가. 이들은 그 다음 RH에서 Pending을 통해 우선권이 부여되거나 Overdue가 될 것이다.
+        """해당 for문의 경우는 Delivery를 완료하기 까지 진행하는데, 필요한 것들이다. 즉, 위에서 간추려진 pickup list에서 PD를 진행할 때, 아래의 조건(충전, 대기 등)을 고려해야하고 이를 통해 Delivery가 end_time 이내에 진행되는지를 분석. 이내에 못했다면, commit 실패 pending이나 overdue로 등록"""
         for projected_row in [r for r in events if r["task"].task_key in chosen]:
             projected_task, projected_event = projected_row["task"], projected_row["event"]
             projected_target = projected_task.origin if projected_event == "Pickup" else projected_task.destination
@@ -467,33 +546,38 @@ def commit_routes(route_events: list[dict[str, Any]], vehicles: list[VehicleStat
             if projected_event == "Delivery" and projected_arrival > end_time_minutes():
                 late_task_keys.add(projected_task.task_key)
             projected_node, projected_time, projected_remaining = projected_target, projected_arrival + SERVICE_TIME_MINUTES, projected_service_charge
-        chosen -= late_task_keys
+        chosen -= late_task_keys # pickup에서는 가능했지만 Delivery에서 실패한 구간을 제외
         if not chosen:
             continue
         # Commit the complete pickup/delivery sequence for pickups inside the frozen interval.
-        events = [r for r in events if r["task"].task_key in chosen]
-        onboard = dict(state.onboard_batches)
-        current_node, current_time, remaining = state.route_node_id, state.available_time, state.remaining_range_km
+        events = [r for r in events if r["task"].task_key in chosen] # 최종적으로 Commit하기로 남은 chosen Request들의 Pickup/Delivery 이벤트만 추려냄.
+        onboard = dict(state.onboard_batches) #차량에 타고 있는 Batch 별 승객 정보
+        """onboard = {
+                    "B10": 3,
+                    "B21": 1
+            }의 형태. max_capacity가 4이므로 최대 onboard는 4여야 한다."""
+        current_node, current_time, remaining = (state.route_node_id, 
+                                                 state.available_time, 
+                                                 state.remaining_range_km)
         for row in events:
             task, event = row["task"], row["event"]
             target = task.origin if event == "Pickup" else task.destination
             dist, travel = float(distance.loc[current_node, target]), int(flight_time.loc[current_node, target])
             planned = max(current_time, row["time"])
-            parking = max(0, planned - current_time - travel)
-            """"""  # 변경 시작: 출발 전 waiting/charging을 Movement와 분리한다. Movement 중에는 충전하지 않으며, 동일 노드 이동은 실제 비행으로 기록하지 않는다.
+            parking = max(0, planned - current_time - travel) # 해당 노드에서 움직이지 않고 대기하는 시간
             range_before_stay = remaining
             remaining = min(MAX_REMAINING_RANGE_KM, remaining + parking * CHARGING_RATE_KM_PER_MIN)
             extra_charge, departure_range = charge_for_departure(remaining, dist)
-            departure = current_time + parking + extra_charge
-            arrival = departure + travel
-            after_flight = departure_range - dist
-            before_count = sum(onboard.values())
+            departure = current_time + parking + extra_charge # 실제 이륙시간
+            arrival = departure + travel # 실제 도착한 시간
+            after_flight = departure_range - dist # 잔여항속거리
+            before_count = sum(onboard.values()) #현재 탑승한 승객 수
             related = task.batch_id
 
-            if parking + extra_charge > 0:
+            if parking + extra_charge > 0: # 해당 상태는 stay를 의미. 따라서, 이때, stay라는 조건을 기록
                 log_rows.append({"vehicle_id": vehicle_id, "sequence": len(log_rows), "event": "Stay", "from_node": current_node, "to_node": current_node, "physical_from_node": nodes[current_node].physical_node_id, "physical_to_node": nodes[current_node].physical_node_id, "departure_time": departure, "arrival_time": current_time, "travel_time": 0, "travel_distance_km": 0.0, "charging_time": parking + extra_charge, "charged_range_km": round(departure_range - range_before_stay, 3), "remaining_range_before": round(range_before_stay, 3), "remaining_range_after": round(departure_range, 3), "onboard_passengers": before_count, "related_batch_id": related, "movement_type": "parking_charging", "from_event": "Position", "to_event": "Movement" if current_node != target else event})
 
-            if current_node != target:
+            if current_node != target: # Node에 있지 않을 때는 Movement로 이동
                 log_rows.append({"vehicle_id": vehicle_id, "sequence": len(log_rows), "event": "Movement", "from_node": current_node, "to_node": target, "physical_from_node": nodes[current_node].physical_node_id, "physical_to_node": nodes[target].physical_node_id, "departure_time": departure, "arrival_time": arrival, "travel_time": travel, "travel_distance_km": round(dist, 3), "charging_time": 0, "charged_range_km": 0.0, "remaining_range_before": round(departure_range, 3), "remaining_range_after": round(after_flight, 3), "onboard_passengers": before_count, "related_batch_id": related, "movement_type": "passenger_flight" if before_count else "empty_repositioning", "from_event": "Position", "to_event": event})
             """"""  # 변경 끝: waiting/charging은 Stay에 귀속하고, Movement는 순수 비행만 기록한다. 따라서 Movement의 charging_time/charged_range_km는 항상 0이다.
             service_start = arrival
@@ -515,7 +599,7 @@ def commit_routes(route_events: list[dict[str, Any]], vehicles: list[VehicleStat
         state.remaining_range_km, state.onboard_batches = remaining, onboard
     return committed
 
-# completed, overdue의 여부에 따라 Node 상태를 업데이트 참고로 GPT의 트롤로 인해 batch == request OD 그룹들을 의미.
+# completed, overdue의 여부에 따라 Node 상태를 업데이트
 def update_batch_states(batches: dict[str, BatchState], current_time: int, increment_pending: bool = False, attempted_batch_ids: set[str] | None = None) -> None:
     for batch in batches.values():
         if batch.status == "Complete":
@@ -540,11 +624,9 @@ def return_to_depots(vehicles: list[VehicleState], distance: pd.DataFrame, fligh
         dist = float(distance.loc[state.route_node_id, state.home_depot])
         charge_min, departure_range = charge_for_departure(state.remaining_range_km, dist)
         departure, arrival = state.available_time + charge_min, state.available_time + charge_min + int(flight_time.loc[state.route_node_id, state.home_depot])
-        """"""  # 변경 시작: 최종 Depot 복귀 전 필요한 충전도 Movement가 아니라 출발 노드의 Stay로 분리한다.
         if charge_min > 0:
             logs.append({"vehicle_id": state.vehicle_id, "sequence": len(logs), "event": "Stay", "from_node": state.route_node_id, "to_node": state.route_node_id, "physical_from_node": nodes[state.route_node_id].physical_node_id, "physical_to_node": nodes[state.route_node_id].physical_node_id, "departure_time": departure, "arrival_time": state.available_time, "travel_time": 0, "travel_distance_km": 0.0, "charging_time": charge_min, "charged_range_km": round(departure_range - state.remaining_range_km, 3), "remaining_range_before": round(state.remaining_range_km, 3), "remaining_range_after": round(departure_range, 3), "onboard_passengers": 0, "related_batch_id": "", "movement_type": "parking_charging", "from_event": "Position", "to_event": "Movement"})
         logs.append({"vehicle_id": state.vehicle_id, "sequence": len(logs), "event": "Movement", "from_node": state.route_node_id, "to_node": state.home_depot, "physical_from_node": nodes[state.route_node_id].physical_node_id, "physical_to_node": nodes[state.home_depot].physical_node_id, "departure_time": departure, "arrival_time": arrival, "travel_time": arrival - departure, "travel_distance_km": round(dist, 3), "charging_time": 0, "charged_range_km": 0.0, "remaining_range_before": round(departure_range, 3), "remaining_range_after": round(departure_range - dist, 3), "onboard_passengers": 0, "related_batch_id": "", "movement_type": "return_to_depot", "from_event": "Position", "to_event": "Depot"})
-        """"""  # 변경 끝: return_to_depot Movement 역시 순수 비행만 기록하며 충전 정보는 직전 Stay에 기록한다.
         state.route_node_id, state.available_time, state.node_arrival_time, state.remaining_range_km = state.home_depot, arrival, arrival, departure_range - dist
 
 
@@ -567,7 +649,7 @@ def batch_dataframe(batches: dict[str, BatchState], maximum_max_wait: int) -> pd
 
 def occupancy_dataframe(route_df: pd.DataFrame, nodes: dict[str, NodeInfo], vehicles: list[VehicleState]) -> pd.DataFrame:
     """Preserve the minute-level vertiport occupancy output using each vehicle's physical location."""
-    # [추가 수정 3] 각 Vehicle을 t=0의 home_depot에서 시작시키고 Movement 구간만 비행 중으로 제외하여,
+    # 각 Vehicle을 t=0의 home_depot에서 시작시키고 Movement 구간만 비행 중으로 제외하여,
     # Stay / Pickup / Delivery / 별도 로그가 없는 단순 대기까지 포함한 실제 노드별 물리적 차량 수를 계산한다.
     columns = ["time_min", "time_hhmm", "route_node_id", "physical_node_id", "physical_address", "vehicle_count", "vehicle_ids"]
 
@@ -608,7 +690,7 @@ def occupancy_dataframe(route_df: pd.DataFrame, nodes: dict[str, NodeInfo], vehi
                     "vehicle_id": state.vehicle_id,
                 })
 
-            # [departure, arrival) 동안은 비행 중이므로 어떤 노드에도 포함하지 않는다.
+            # [departure, arrival] 동안은 비행 중이므로 어떤 노드에도 포함하지 않는다.
             current_node = str(movement["to_node"])
             current_time = arrival
 
@@ -634,7 +716,7 @@ def occupancy_dataframe(route_df: pd.DataFrame, nodes: dict[str, NodeInfo], vehi
     result["time_hhmm"] = result["time_min"].map(format_hhmm)
     result["physical_node_id"] = result["route_node_id"].map(lambda value: nodes[value].physical_node_id)
     result["physical_address"] = result["route_node_id"].map(lambda value: nodes[value].address)
-    # [추가 수정 3 끝] 기존 CSV 열 구조는 유지하고 vehicle_count의 의미만 '서비스 중 차량 수'에서
+    # 기존 CSV 열 구조는 유지하고 vehicle_count의 의미만 '서비스 중 차량 수'에서
     # '해당 시각에 해당 노드에 실제로 존재하는 차량 수'로 변경한다.
     return result[columns]
 
@@ -680,9 +762,7 @@ def main() -> None:
         raise ValueError(f"Depot node가 행렬에 없습니다: {missing}")
     tasks, batches = load_tasks(REQUEST_PATH, distance, flight_time, nodes, transportation_matrix)
     maximum_max_wait = max(t.max_wait_min for t in tasks)
-    """변경 시작: 마지막 Rolling Horizon에서 최초 home_depot으로 복귀하기 위한 기준 시각"""
     latest_window_end = max(t.window_end for t in tasks)
-    """변경 끝"""
     vehicles = [VehicleState(i, depots[i % len(depots)], depots[i % len(depots)]) for i in range(NUM_VEHICLES)]
     logs, plans, summaries = [], [], []
     simulation_end = end_time_minutes()
@@ -739,10 +819,8 @@ def main() -> None:
             objective = None if solution is None else int(solution.ObjectiveValue())
             committed = commit_routes(routes, vehicles, distance, flight_time, nodes, commit_end, logs, batches)
             for task in active:
-                """"""  # 변경 시작: planned_visit가 단순 계획인지 실제 Commit인지 구분할 수 있도록 planned Pickup 시각과 committed 여부를 plan history에 추가한다.
                 planned_pickup_time = next((int(row["time"]) for row in routes if row["event"] == "Pickup" and row["task"].task_key == task.task_key), None)
                 plans.append({"horizon_start": hs, "horizon_end": he, "request_id": task.request_id, "batch_id": task.batch_id, "planned_visit": task.task_key in selected, "planned_pickup_time": planned_pickup_time, "committed": planned_pickup_time is not None and planned_pickup_time < commit_end and task.status == "Complete", "drop_penalty": drop_penalty(batches[task.batch_id], maximum_max_wait)})
-                """"""  # 변경 끝: committed=True는 해당 Pickup 계획시각이 현재 RH의 commit_end보다 앞서 실제 확정 대상이 된 경우를 의미한다.
         elif LOG_ROLLING_HORIZON:
             print("활성 Request가 없어 Solver 실행을 건너뜁니다.", flush=True)
 
@@ -787,12 +865,12 @@ def main() -> None:
     if not route_df.empty:
         route_df = route_df.sort_values(["vehicle_id", "departure_time", "arrival_time"]).reset_index(drop=True)
         route_df["sequence"] = route_df.groupby("vehicle_id").cumcount()
-        """"""  # 변경 시작: vehicle_route_legs.csv의 분 단위 departure_time/arrival_time은 유지하고, BASE_TIME 기준 실제 시각 열을 추가한다.
+        """vehicle_route_legs.csv의 분 단위 departure_time/arrival_time은 유지하고, BASE_TIME 기준 실제 시각 열을 추가한다."""  
         route_df["depT_hhmm"] = route_df["departure_time"].map(lambda value: format_hhmm(int(value)))
         route_df["arrT_hhmm"] = route_df["arrival_time"].map(lambda value: format_hhmm(int(value)))
-        """"""  # 변경 끝: depT_hhmm/arrT_hhmm 열에 실제 출발·도착 시각(HH:MM)을 저장한다.
+        """depT_hhmm/arrT_hhmm 열에 실제 출발·도착 시각(HH:MM)을 저장한다.""" 
 
-    """"""  # 변경 시작: 내부 route_df는 그대로 두고, 사람이 읽는 vehicle_route_legs.csv 전용 출력 복사본만 만든다. Solver/penalty/occupancy/vehicle summary에는 영향을 주지 않는다.
+    """내부 route_df는 그대로 두고, 사람이 읽는 vehicle_route_legs.csv 전용 출력 복사본만 만든다. Solver/penalty/occupancy/vehicle summary에는 영향을 주지 않는다."""
     route_output_df = route_df.copy()
     if not route_output_df.empty:
         same_node_stay = (
@@ -836,7 +914,6 @@ def main() -> None:
         # Pickup/Delivery의 duration_min은 SERVICE_TIME_MINUTES=3이다.
         # charging_time=BOARDING_CHARGE_MINUTES=2는 이 3분 안에서 동시에 충전되는 시간이므로
         # 서비스 총 소요시간을 5분으로 늘리지 않는다.
-        """"""  # 변경 시작: vehicle_route_legs.csv에서는 start_time/end_time으로 시간 표현을 통일하므로 departure_time/arrival_time/depT_hhmm/arrT_hhmm은 출력에서 제외한다. 내부 route_df의 departure_time/arrival_time 계산은 그대로 유지한다.
         route_output_df = route_output_df[
             [
                 "vehicle_id",
@@ -864,8 +941,7 @@ def main() -> None:
                 "to_event",
             ]
         ]
-        """"""  # 변경 끝: 사람이 확인하는 vehicle_route_legs.csv에는 start_time/end_time 계열만 남기며, 기존 내부 시간 계산 및 다른 출력 파일에는 영향을 주지 않는다.
-    """"""  # 변경 끝: vehicle_route_legs.csv에서 Movement/Service/Stay의 시간을 모두 start_time -> end_time 순서로 읽을 수 있게 했으며, 계산 로직은 변경하지 않았다.
+
 
     save_csv(batch_dataframe(batches, maximum_max_wait), "rolling_horizon_request_status.csv")
     save_csv(route_output_df, "vehicle_route_legs.csv")
@@ -874,7 +950,7 @@ def main() -> None:
     # [추가 수정 4] 물리적 차량 위치 복원을 위해 초기 home_depot 정보가 있는 vehicles를 함께 전달한다.
     save_csv(occupancy_dataframe(route_df, nodes, vehicles), "node_vehicle_occupancy_by_minute.csv")
     # [추가 수정 4 끝] 출력 파일명과 다른 출력 로직은 그대로 유지한다.
-    save_csv(vehicle_summary_dataframe(route_df, vehicles), "vehicle_summary.csv")
+    save_csv(vehicle_summary_dataframe(route_df, vehicles, batches), "vehicle_summary.csv")
     print(f"Complete={sum(b.status == 'Complete' for b in batches.values()):,}, Overdue={sum(b.status == 'Overdue' for b in batches.values()):,}")
     print(f"runtime={time.perf_counter() - started:.2f}s, output={OUTPUT_DIR}")
 
