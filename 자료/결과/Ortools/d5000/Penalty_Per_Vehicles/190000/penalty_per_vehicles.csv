@@ -1,0 +1,8 @@
+﻿revenue,num_vehicles,total_penalty,total_objectives,complete_batch_count,overdue_batch_count,total_batch_count,runtime_seconds,output_directory
+190000,50,592278829,792689248,1861,1459,3320,825.714,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\d5000\Penalty_Per_Vehicles\190000\vehicles_50
+190000,55,540121040,758133824,1988,1332,3320,824.864,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\d5000\Penalty_Per_Vehicles\190000\vehicles_55
+190000,60,489996248,725305785,2114,1206,3320,825.484,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\d5000\Penalty_Per_Vehicles\190000\vehicles_60
+190000,65,442016069,688726786,2226,1094,3320,825.709,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\d5000\Penalty_Per_Vehicles\190000\vehicles_65
+190000,70,401403275,659515172,2330,990,3320,824.828,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\d5000\Penalty_Per_Vehicles\190000\vehicles_70
+190000,75,364800728,630339827,2421,899,3320,825.965,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\d5000\Penalty_Per_Vehicles\190000\vehicles_75
+190000,80,324395029,603669457,2513,807,3320,826.835,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\d5000\Penalty_Per_Vehicles\190000\vehicles_80
