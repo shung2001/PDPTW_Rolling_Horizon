@@ -18,7 +18,7 @@ from ortools.constraint_solver import pywrapcp, routing_enums_pb2
 
 PROJECT_DIR = Path(__file__).resolve().parents[3]
 INPUT_DIR = PROJECT_DIR / "자료" / "기초자료"
-REQUEST_PATH = INPUT_DIR / "finalDemand_v5" / "finalDemand_v5" / "d1000_s01.csv"
+REQUEST_PATH = INPUT_DIR / "finalDemand_v5" / "finalDemand_v5" / "d5000_s01.csv"
 DISTANCE_MATRIX_PATH = INPUT_DIR / "distance_matrix_km.csv"
 TIME_MATRIX_PATH = INPUT_DIR / "flight_time_matrix_min_remove_fuel.csv"
 NODE_REFERENCE_PATH = INPUT_DIR / "vp_reference.csv"
@@ -37,6 +37,10 @@ TIME_LIMIT_SECONDS = 10
 SERVICE_TIME_MINUTES = 3
 BOARDING_CHARGE_MINUTES = 2
 TAXI_TIME_MINUTES = 1
+REVENUE = 100000
+HOVERING_LIFT_OFF_COST = 18404
+MIN_PER_OPERATING = 1247
+MIN_PER_MECHANIC = 9140
 BASE_DROP_PENALTY = 1_000_000
 PENDING_PENALTY_PER_COUNT = 100_000
 MAX_WAIT_PENALTY_WEIGHT = 1_000
@@ -225,6 +229,73 @@ def to_offset_minutes(value: object) -> int:
     result = int(parts[0]) * 60 + int(parts[1]) - base_time_minutes()
     return result + 1440 if result < 0 else result
 
+def Value_Of_Time(
+        batch: BatchState,
+        fare_matrix: pd.DataFrame,
+) -> float:
+    
+    representative = batch.alternatives[0]
+
+    public_transit_fare = float(
+        fare_matrix.loc[
+            representative.origin,
+            representative.destination
+        ]
+    )
+
+    time_saving = (
+        representative.transportation_min - representative.joby_min
+    )
+
+    if time_saving <= 0:
+        return 0
+    
+    vot = (REVENUE - public_transit_fare) / time_saving
+
+    return vot
+
+def Pending_Cost(batch: BatchState, fare_matrix: pd.DataFrame, revenue: int, hs):
+    representative = batch.alternatives[0]
+    Number_Of_Pending = batch.pending_count
+    passengers = representative.passengers
+    vot = Value_Of_Time(batch, fare_matrix, revenue)
+    remaining_time = representative.window_end - hs
+    alpha = 0
+
+    if remaining_time <= 5:
+        alpha = 1
+    elif 5 < remaining_time <= 10:
+        alpha = 0.75
+    elif 10 < remaining_time <= 15:
+        alpha = 0.5
+    else:
+        alpha = 0.25
+
+    return int(vot * Number_Of_Pending * REOPTIMIZATION_INTERVAL_MINUTES * passengers * alpha)
+
+def Drop_Cost(batch: BatchState, revenue:int):
+    representative = batch.alternatives[0]
+    passengers = representative.passengers
+    cost = revenue
+
+    return int(passengers * cost)
+
+def Tranportation_Joby_fare(batch: BatchState, fare_matrix: pd.DataFrame, revenue: int):
+    representative = batch.alternatives[0]
+    transportation_time = representative.transportation_min
+    joby_min = representative.joby_min
+    Vot = Value_Of_Time(batch, fare_matrix, revenue)
+    passengers = representative.passengers
+
+    return int(Vot * (transportation_time - joby_min) * passengers)
+
+
+def total_adddisjunction_cost(batch: BatchState, fare_matrix: pd.DataFrame, revenue: int, hs):
+    Pending_Cost_1 = Pending_Cost(batch, fare_matrix, revenue, hs)
+    Drop_Cost_1 = Drop_Cost(batch, revenue)
+    Tranportation_Joby_fare_1 = Tranportation_Joby_fare(batch, fare_matrix, revenue)
+
+    return int(Pending_Cost_1 + Drop_Cost_1 + Tranportation_Joby_fare_1)
 
 def drop_penalty(batch: BatchState, maximum_max_wait: int) -> int:
     representative = batch.alternatives[0]
@@ -305,7 +376,7 @@ def load_tasks(request_path: Path, distance: pd.DataFrame, flight_time: pd.DataF
 
 
 """변경 시작: 중간 Rolling Horizon의 End를 Open End로 처리하기 위한 설정"""
-def build_horizon_model(active: list[RequestTask], batches: dict[str, BatchState], vehicles: list[VehicleState], distance: pd.DataFrame, flight_time: pd.DataFrame, hs: int, he: int, maximum_max_wait: int, return_to_home: bool = False) -> HorizonModel:
+def build_horizon_model(active: list[RequestTask], batches: dict[str, BatchState], vehicles: list[VehicleState], distance: pd.DataFrame, flight_time: pd.DataFrame, fare_matrix:pd.DataFrame, hs: int, he: int, maximum_max_wait: int, return_to_home: bool = False) -> HorizonModel:
     """변경 끝"""
     vehicle_count = len(vehicles)
     starts = list(range(vehicle_count))
@@ -336,7 +407,6 @@ def build_horizon_model(active: list[RequestTask], batches: dict[str, BatchState
     def service(model_node: int) -> int:
         return SERVICE_TIME_MINUTES if model_node in node_meta else 0 #어차피 모든 노드는 전부 PD 노드 그래서 추후에 진행하는 SERVICE_TIME_MINUTES를 진행.
 
-    """변경 시작: 중간 Rolling Horizon에서는 End까지의 가상 이동 비용을 0으로 처리"""
     def time_cb(fi: int, ti: int) -> int:
         f, t = manager.IndexToNode(fi), manager.IndexToNode(ti)
         if not return_to_home and vehicle_count <= t < vehicle_count * 2: # 중간구간 노드는 아예 페널티 계산 X
@@ -348,7 +418,14 @@ def build_horizon_model(active: list[RequestTask], batches: dict[str, BatchState
         if not return_to_home and vehicle_count <= t < vehicle_count * 2: # 중간노드는 아예 페널티 계산 X
             return 0
         return int(round(float(distance.loc[location(f), location(t)]) * 1000))
-    """변경 끝"""
+    
+    def cost_cb(fi: int, ti:int) -> int:
+            f, t = manager.IndexToNode(fi), manager.IndexToNode(ti)
+    
+            if not return_to_home and vehicle_count <= t <vehicle_count * 2:
+                return 0
+            flight_min = int(flight_time.loc[location(f), location(t)])
+            return HOVERING_LIFT_OFF_COST + flight_min * (MIN_PER_OPERATING + MIN_PER_MECHANIC)
 
     def range_cb(fi: int, ti: int) -> int: # 각 경로별 거리 출력 이 거리를 통해 vehicle의 잔여 비행가능 거리를 업데이트 
         return -distance_cb(fi, ti) # 각 경로별 거리 출력 이 거리를 통해 vehicle의 잔여 비행가능 거리를 업데이트 
@@ -356,7 +433,8 @@ def build_horizon_model(active: list[RequestTask], batches: dict[str, BatchState
     ti = routing.RegisterTransitCallback(time_cb)
     di = routing.RegisterTransitCallback(distance_cb) # 경로별 거리
     ri = routing.RegisterTransitCallback(range_cb) # 비행기 잔여 비행가능 거리 
-    routing.SetArcCostEvaluatorOfAllVehicles(di)
+    ci = routing.RegisterTransitCallback(cost_cb)
+    routing.SetArcCostEvaluatorOfAllVehicles(ci)
     model_end = he + int(flight_time.to_numpy().max()) * 4 + SERVICE_TIME_MINUTES * 4
     routing.AddDimension(ti, model_end, model_end, False, "Time")
     td = routing.GetDimensionOrDie("Time")
@@ -394,7 +472,7 @@ def build_horizon_model(active: list[RequestTask], batches: dict[str, BatchState
             solver.Add(rd.CumulVar(idx) + rd.SlackVar(idx) <= max_range_m)
 
     for batch_id, pickup_indices in by_batch.items():
-        penalty = drop_penalty(batches[batch_id], maximum_max_wait)
+        penalty = total_adddisjunction_cost(batches[batch_id], fare_matrix, REVENUE, hs)
         routing.AddDisjunction(pickup_indices, penalty, 1)
 
     demands = [0] * cursor

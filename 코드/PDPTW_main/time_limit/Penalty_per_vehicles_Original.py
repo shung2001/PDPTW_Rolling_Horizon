@@ -23,8 +23,8 @@ VEHICLE_CONFIG = {
 }
 
 REVENUE_CONFIG = {
-    "min": 200000,
-    "max": 200000,
+    "min": 190000,
+    "max": 190000,
     "step": 10000,
 }
 
