@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""CONFIG에 지정한 차량 범위의 PDPTW 종합 drop penalty를 비교한다.
+"""설정한 Revenue와 차량 수 범위의 PDPTW 종합 drop penalty를 비교한다.
 
-종합 penalty는 최종 상태가 Overdue인 batch의 final_drop_penalty 합계이다.
+종합 penalty는 최종 상태가 Overdue인 batch의 penalty 합계이다.
 Complete batch는 실제로 drop되지 않았으므로 합계에서 제외한다.
 """
 
@@ -16,15 +16,21 @@ import pandas as pd
 import PDPTW_NEW_Remove_Depot_test as pdptw
 
 
-CONFIG = {
-    "min": 20,
-    "max": 100,
+VEHICLE_CONFIG = {
+    "min": 50,
+    "max": 150,
     "step": 5,
 }
 
-SWEEP_OUTPUT_DIR = pdptw.OUTPUT_DIR 
-SUMMARY_PATH = SWEEP_OUTPUT_DIR / "penalty_per_vehicles.csv"
-BEST_OUTPUT_DIR = SWEEP_OUTPUT_DIR / "best_penalty"
+REVENUE_CONFIG = {
+    "min": 50000,
+    "max": 50000,
+    "step": 10000,
+}
+
+# PDPTW_NEW_TEST의 OUTPUT_DIR 마지막 폴더는 기존 REVENUE 값이다.
+# 그 상위 폴더를 sweep 루트로 사용해 <revenue>/vehicles_<count> 구조로 저장한다.
+SWEEP_OUTPUT_DIR = pdptw.OUTPUT_DIR
 PDPTW_OUTPUT_FILENAMES = (
     "rolling_horizon_request_status.csv",
     "vehicle_route_legs.csv",
@@ -32,22 +38,38 @@ PDPTW_OUTPUT_FILENAMES = (
     "rolling_horizon_summary.csv",
     "node_vehicle_occupancy_by_minute.csv",
     "vehicle_summary.csv",
+    "demand_summary.csv",
 )
 
 
 def configured_vehicle_counts() -> range:
-    min_vehicles = CONFIG["min"]
-    max_vehicles = CONFIG["max"]
-    step_vehicles = CONFIG["step"]
+    min_vehicles = VEHICLE_CONFIG["min"]
+    max_vehicles = VEHICLE_CONFIG["max"]
+    step_vehicles = VEHICLE_CONFIG["step"]
     if any(type(value) is not int for value in (min_vehicles, max_vehicles, step_vehicles)):
-        raise TypeError("CONFIG의 min, max, step은 정수여야 합니다")
+        raise TypeError("VEHICLE_CONFIG의 min, max, step은 정수여야 합니다")
     if min_vehicles < 0 or max_vehicles < 0:
-        raise ValueError("CONFIG의 min과 max는 0 이상이어야 합니다")
+        raise ValueError("VEHICLE_CONFIG의 min과 max는 0 이상이어야 합니다")
     if min_vehicles > max_vehicles:
-        raise ValueError("CONFIG의 min은 max보다 클 수 없습니다")
+        raise ValueError("VEHICLE_CONFIG의 min은 max보다 클 수 없습니다")
     if step_vehicles <= 0:
-        raise ValueError("CONFIG의 step은 1 이상이어야 합니다")
+        raise ValueError("VEHICLE_CONFIG의 step은 1 이상이어야 합니다")
     return range(min_vehicles, max_vehicles + 1, step_vehicles)
+
+
+def configured_revenues() -> range:
+    min_revenue = REVENUE_CONFIG["min"]
+    max_revenue = REVENUE_CONFIG["max"]
+    step_revenue = REVENUE_CONFIG["step"]
+    if any(type(value) is not int for value in (min_revenue, max_revenue, step_revenue)):
+        raise TypeError("REVENUE_CONFIG의 min, max, step은 정수여야 합니다")
+    if min_revenue < 0 or max_revenue < 0:
+        raise ValueError("REVENUE_CONFIG의 min과 max는 0 이상이어야 합니다")
+    if min_revenue > max_revenue:
+        raise ValueError("REVENUE_CONFIG의 min은 max보다 클 수 없습니다")
+    if step_revenue <= 0:
+        raise ValueError("REVENUE_CONFIG의 step은 1 이상이어야 합니다")
+    return range(min_revenue, max_revenue + 1, step_revenue)
 
 
 def simulate_zero_vehicles(output_dir: Path) -> pd.DataFrame:
@@ -56,6 +78,7 @@ def simulate_zero_vehicles(output_dir: Path) -> pd.DataFrame:
     flight_time = pdptw.load_matrix(pdptw.TIME_MATRIX_PATH, True)
     nodes = pdptw.load_nodes(pdptw.NODE_REFERENCE_PATH)
     transportation_matrix = pdptw.load_named_matrix(pdptw.TRANSPORTATION_MATRIX_PATH, nodes)
+    fare_matrix = pdptw.load_named_matrix(pdptw.TRANSPORTATION_MATRIX_COST, nodes)
 
     if set(distance.index) != set(flight_time.index) or not set(distance.index).issubset(nodes):
         raise ValueError("distance/time/node-reference의 node 집합이 일치하지 않습니다")
@@ -100,9 +123,11 @@ def simulate_zero_vehicles(output_dir: Path) -> pd.DataFrame:
                     "request_id": task.request_id,
                     "batch_id": task.batch_id,
                     "planned_visit": False,
-                    "drop_penalty": pdptw.drop_penalty(
+                    "drop_penalty": pdptw.total_adddisjunction_cost(
                         batches[task.batch_id],
-                        maximum_max_wait,
+                        fare_matrix,
+                        pdptw.REVENUE,
+                        horizon_start,
                     ),
                 }
             )
@@ -135,8 +160,45 @@ def simulate_zero_vehicles(output_dir: Path) -> pd.DataFrame:
         batches,
         simulation_end + pdptw.ROLLING_HORIZON_MINUTES,
     )
-    status_df = pdptw.batch_dataframe(batches, maximum_max_wait)
+    status_df = pdptw.batch_dataframe(batches, maximum_max_wait, fare_matrix)
     route_df = pd.DataFrame()
+    total_passengers = sum(task.passengers for task in tasks)
+    completed_passengers = sum(
+        batch.alternatives[0].passengers
+        for batch in batches.values()
+        if batch.status == "Complete"
+    )
+    overdue_passengers = sum(
+        batch.alternatives[0].passengers
+        for batch in batches.values()
+        if batch.status == "Overdue"
+    )
+    demand_summary_df = pd.DataFrame(
+        [
+            {
+                "base_time": pdptw.BASE_TIME,
+                "end_time": pdptw.END_TIME,
+                "total_passengers": total_passengers,
+                "total_batches": len(batches),
+                "completed_passengers": completed_passengers,
+                "overdue_passengers": overdue_passengers,
+                "service_rate_percent": (
+                    completed_passengers / total_passengers * 100
+                    if total_passengers > 0
+                    else 0
+                ),
+                "total_objectives": int(
+                    pd.to_numeric(
+                        status_df.loc[
+                            status_df["final_status"].eq("Overdue"),
+                            "final_cost(원)",
+                        ],
+                        errors="raise",
+                    ).sum()
+                ),
+            }
+        ]
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
     output_frames = {
         "rolling_horizon_request_status.csv": status_df,
@@ -146,17 +208,25 @@ def simulate_zero_vehicles(output_dir: Path) -> pd.DataFrame:
         "node_vehicle_occupancy_by_minute.csv": pdptw.occupancy_dataframe(
             route_df,
             nodes,
+            [],
         ),
-        "vehicle_summary.csv": pdptw.vehicle_summary_dataframe(route_df, []),
+        "vehicle_summary.csv": pd.DataFrame(),
+        "demand_summary.csv": demand_summary_df,
     }
     for filename, frame in output_frames.items():
         frame.to_csv(output_dir / filename, index=False, encoding="utf-8-sig")
     return status_df
 
 
-def run_vehicle_case(vehicle_count: int) -> tuple[pd.DataFrame, Path]:
+def run_vehicle_case(
+    revenue: int,
+    vehicle_count: int,
+    revenue_output_dir: Path,
+) -> tuple[pd.DataFrame, Path]:
     """지정한 차량 수로 시뮬레이션하고 최종 request 상태를 반환한다."""
-    output_dir = SWEEP_OUTPUT_DIR / f"vehicles_{vehicle_count}"
+    output_dir = revenue_output_dir / f"vehicles_{vehicle_count}"
+
+    pdptw.REVENUE = revenue
 
     if vehicle_count == 0:
         return simulate_zero_vehicles(output_dir), output_dir
@@ -177,106 +247,166 @@ def summarize_penalty(
     output_dir: Path,
 ) -> dict[str, object]:
     overdue = status_df["final_status"].eq("Overdue")
+    if "final_drop_penalty" in status_df.columns:
+        penalty_column = "final_drop_penalty"
+    elif "final_cost(원)" in status_df.columns:
+        penalty_column = "final_cost(원)"
+    else:
+        raise KeyError(
+            "rolling_horizon_request_status.csv에 penalty 열이 없습니다: "
+            "final_drop_penalty 또는 final_cost(원) 열이 필요합니다"
+        )
     total_penalty = int(
         pd.to_numeric(
-            status_df.loc[overdue, "final_drop_penalty"],
+            status_df.loc[overdue, penalty_column],
             errors="raise",
         ).sum()
     )
+    demand_summary_path = output_dir / "demand_summary.csv"
+    demand_summary_df = pd.read_csv(demand_summary_path, encoding="utf-8-sig")
+    if len(demand_summary_df) != 1 or "total_objectives" not in demand_summary_df.columns:
+        raise ValueError(
+            f"demand_summary.csv에는 total_objectives 열을 포함한 한 행이 필요합니다: "
+            f"{demand_summary_path}"
+        )
+    total_objectives = int(
+        pd.to_numeric(demand_summary_df["total_objectives"], errors="raise").iloc[0]
+    )
     return {
+        "revenue": pdptw.REVENUE,
         "num_vehicles": vehicle_count,
         "total_penalty": total_penalty,
+        "total_objectives": total_objectives,
         "complete_batch_count": int(status_df["final_status"].eq("Complete").sum()),
         "overdue_batch_count": int(overdue.sum()),
         "total_batch_count": int(len(status_df)),
         "runtime_seconds": round(runtime_seconds, 3),
-        "output_directory": str(output_dir),
     }
 
 
-def publish_best_result(best_result: dict[str, object]) -> None:
+def publish_best_result(
+    best_result: dict[str, object],
+    best_output_dir: Path,
+) -> None:
     """최저 penalty 실행 결과를 PDPTW_NEW.py의 출력 파일명으로 복사한다."""
     source_dir = Path(str(best_result["output_directory"]))
-    BEST_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    best_output_dir.mkdir(parents=True, exist_ok=True)
     for filename in PDPTW_OUTPUT_FILENAMES:
         source = source_dir / filename
         if not source.is_file():
             raise FileNotFoundError(f"최저 penalty 결과 파일이 없습니다: {source}")
-        shutil.copy2(source, BEST_OUTPUT_DIR / filename)
+        shutil.copy2(source, best_output_dir / filename)
 
 
 def main() -> None:
     SWEEP_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    results: list[dict[str, object]] = []
-
-    vehicle_counts = configured_vehicle_counts()
+    vehicle_counts = tuple(configured_vehicle_counts())
+    revenues = tuple(configured_revenues())
     print(
-        f"차량 수 범위: CONFIG min={CONFIG['min']}, max={CONFIG['max']}, "
-        f"step={CONFIG['step']}",
+        f"Revenue 범위: REVENUE_CONFIG min={REVENUE_CONFIG['min']:,}, "
+        f"max={REVENUE_CONFIG['max']:,}, step={REVENUE_CONFIG['step']:,}",
+        flush=True,
+    )
+    print(
+        f"차량 수 범위: VEHICLE_CONFIG min={VEHICLE_CONFIG['min']}, "
+        f"max={VEHICLE_CONFIG['max']}, step={VEHICLE_CONFIG['step']}",
         flush=True,
     )
 
-    for vehicle_count in vehicle_counts:
-        print(f"\n차량 {vehicle_count}대 계산 시작", flush=True)
-        started = time.perf_counter()
-        status_df, output_dir = run_vehicle_case(vehicle_count)
-        result = summarize_penalty(
-            vehicle_count,
-            status_df,
-            time.perf_counter() - started,
-            output_dir,
-        )
-        results.append(result)
+    for revenue in revenues:
+        revenue_output_dir = SWEEP_OUTPUT_DIR / str(revenue)
+        summary_path = revenue_output_dir / "penalty_per_vehicles.csv"
+        best_output_dir = revenue_output_dir / "best_penalty"
+        revenue_output_dir.mkdir(parents=True, exist_ok=True)
+        results: list[dict[str, object]] = []
 
-        # 각 차량 수의 계산이 끝날 때마다 저장하여 중간 결과도 보존한다.
-        pd.DataFrame(results).to_csv(
-            SUMMARY_PATH,
-            index=False,
-            encoding="utf-8-sig",
+        print(f"\nRevenue {revenue:,}원 계산 시작", flush=True)
+        for vehicle_count in vehicle_counts:
+            print(f"\nRevenue {revenue:,}원, 차량 {vehicle_count}대 계산 시작", flush=True)
+            started = time.perf_counter()
+            status_df, output_dir = run_vehicle_case(
+                revenue,
+                vehicle_count,
+                revenue_output_dir,
+            )
+            result = summarize_penalty(
+                vehicle_count,
+                status_df,
+                time.perf_counter() - started,
+                output_dir,
+            )
+            results.append(result)
+
+            # 각 차량 수의 계산이 끝날 때마다 저장하여 중간 결과도 보존한다.
+            pd.DataFrame(results).to_csv(
+                summary_path,
+                index=False,
+                encoding="utf-8-sig",
+            )
+            print(
+                f"Revenue {revenue:,}원, 차량 {vehicle_count}대일 때 종합 penalty: "
+                f"{int(result['total_penalty']):,} "
+                f"(Complete={int(result['complete_batch_count']):,}, "
+                f"Overdue={int(result['overdue_batch_count']):,})",
+                flush=True,
+            )
+
+        best_result = min(
+            results,
+            key=lambda result: (
+                int(result["total_penalty"]),
+                int(result["num_vehicles"]),
+            ),
         )
+        publish_best_result(best_result, best_output_dir)
+
+        best_total_objectives_result = min(
+            results,
+            key=lambda result: (
+                int(result["total_objectives"]),
+                int(result["num_vehicles"]),
+            ),
+        )
+
+        results_df = pd.DataFrame(results)
+        results_df["is_best_penalty"] = (
+            results_df["num_vehicles"] == int(best_result["num_vehicles"])
+        )
+        results_df["is_best_total_objectives"] = (
+            results_df["num_vehicles"]
+            == int(best_total_objectives_result["num_vehicles"])
+        )
+        results_df.to_csv(summary_path, index=False, encoding="utf-8-sig")
+
+        print(f"\nRevenue {revenue:,}원 차량 수별 종합 penalty", flush=True)
         print(
-            f"차량 {vehicle_count}대일 때 종합 penalty: "
-            f"{int(result['total_penalty']):,} "
-            f"(Complete={int(result['complete_batch_count']):,}, "
-            f"Overdue={int(result['overdue_batch_count']):,})",
+            results_df[
+                [
+                    "num_vehicles",
+                    "total_penalty",
+                    "total_objectives",
+                    "complete_batch_count",
+                    "overdue_batch_count",
+                    "is_best_penalty",
+                    "is_best_total_objectives",
+                ]
+            ].to_string(index=False),
             flush=True,
         )
-
-    best_result = min(
-        results,
-        key=lambda result: (
-            int(result["total_penalty"]),
-            int(result["num_vehicles"]),
-        ),
-    )
-    publish_best_result(best_result)
-
-    results_df = pd.DataFrame(results)
-    results_df["is_best_penalty"] = (
-        results_df["num_vehicles"] == int(best_result["num_vehicles"])
-    )
-    results_df.to_csv(SUMMARY_PATH, index=False, encoding="utf-8-sig")
-
-    print("\n차량 수별 종합 penalty", flush=True)
-    print(
-        results_df[
-            [
-                "num_vehicles",
-                "total_penalty",
-                "complete_batch_count",
-                "overdue_batch_count",
-                "is_best_penalty",
-            ]
-        ].to_string(index=False),
-        flush=True,
-    )
-    print(
-        f"\n최저 penalty: 차량 {int(best_result['num_vehicles'])}대, "
-        f"종합 penalty={int(best_result['total_penalty']):,}",
-        flush=True,
-    )
-    print(f"최저 penalty 상세 결과: {BEST_OUTPUT_DIR}", flush=True)
-    print(f"\n요약 CSV: {SUMMARY_PATH}", flush=True)
+        print(
+            f"\nRevenue {revenue:,}원 최저 penalty: "
+            f"차량 {int(best_result['num_vehicles'])}대, "
+            f"종합 penalty={int(best_result['total_penalty']):,}",
+            flush=True,
+        )
+        print(
+            f"Revenue {revenue:,}원 최저 total_objectives: "
+            f"차량 {int(best_total_objectives_result['num_vehicles'])}대, "
+            f"total_objectives={int(best_total_objectives_result['total_objectives']):,}",
+            flush=True,
+        )
+        print(f"최저 penalty 상세 결과: {best_output_dir}", flush=True)
+        print(f"요약 CSV: {summary_path}", flush=True)
 
 
 if __name__ == "__main__":

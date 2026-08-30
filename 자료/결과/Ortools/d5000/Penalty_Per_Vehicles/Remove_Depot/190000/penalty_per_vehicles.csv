@@ -1,0 +1,4 @@
+﻿revenue,num_vehicles,total_penalty,total_objectives,complete_batch_count,overdue_batch_count,total_batch_count,runtime_seconds
+190000,50,1044954530,1152130923,944,2391,3335,42.605
+190000,55,1026371348,1137602650,985,2350,3335,42.626
+190000,60,1029596145,1141126856,980,2355,3335,42.47

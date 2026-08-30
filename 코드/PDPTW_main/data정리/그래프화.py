@@ -32,7 +32,7 @@ DEFAULT_DATA_DIR = (
     / "자료"
     / "결과"
     / "Ortools"
-    / "d2000"
+    / "d4000"
     / "Penalty_Per_Vehicles"
 )
 
