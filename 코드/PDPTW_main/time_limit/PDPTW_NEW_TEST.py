@@ -24,7 +24,7 @@ TIME_MATRIX_PATH = INPUT_DIR / "flight_time_matrix_min_remove_fuel.csv"
 NODE_REFERENCE_PATH = INPUT_DIR / "vp_reference.csv"
 TRANSPORTATION_MATRIX_PATH = PROJECT_DIR / "자료" / "결과" / "차량_교통수단" /"public_transit_time_matrix_tmap_min.csv"
 TRANSPORTATION_MATRIX_COST = PROJECT_DIR / "자료" / "결과" / "차량_교통수단" / "public_transit_fare_matrix_tmap_krw.csv"
-OUTPUT_DIR = PROJECT_DIR / "자료" / "결과" / "Ortools" / "d4000" / "Penalty_Per_Vehicles" / "Original"
+OUTPUT_DIR = PROJECT_DIR / "자료" / "결과" / "Ortools" / "Rolling_Horizon_구간_60" / "d5000" / "Penalty_Per_Vehicles" / "Original"
 
 BASE_TIME = "05:40"
 END_TIME = "19:16"
@@ -33,7 +33,7 @@ VEHICLE_CAPACITY = 4
 DEPOT_ROUTE_NODE_IDS = list(range(1, 11))
 ROLLING_HORIZON_MINUTES = 60
 REOPTIMIZATION_INTERVAL_MINUTES = 20
-TIME_LIMIT_SECONDS = 20
+TIME_LIMIT_SECONDS = 1
 
 SERVICE_TIME_MINUTES = 3
 BOARDING_CHARGE_MINUTES = 2
