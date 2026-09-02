@@ -270,7 +270,7 @@ def Pending_Cost(batch: BatchState, fare_matrix: pd.DataFrame, revenue: int, hs)
         alpha = 0.5
     else:
         alpha = 0.25
-
+ 
     return int(vot * Number_Of_Pending * REOPTIMIZATION_INTERVAL_MINUTES * passengers * alpha)
 
 def Drop_Cost(batch: BatchState, revenue:int):
