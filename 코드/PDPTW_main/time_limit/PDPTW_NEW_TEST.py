@@ -18,7 +18,7 @@ from ortools.constraint_solver import pywrapcp, routing_enums_pb2
 
 PROJECT_DIR = Path(__file__).resolve().parents[3]
 INPUT_DIR = PROJECT_DIR / "자료" / "기초자료"
-REQUEST_PATH = INPUT_DIR / "finalDemand_v5" / "finalDemand_v5" / "d4000_s01.csv"
+REQUEST_PATH = INPUT_DIR / "finalDemand_v5" / "finalDemand_v5" / "d5000_s01.csv"
 DISTANCE_MATRIX_PATH = INPUT_DIR / "distance_matrix_km.csv"
 TIME_MATRIX_PATH = INPUT_DIR / "flight_time_matrix_min_remove_fuel.csv"
 NODE_REFERENCE_PATH = INPUT_DIR / "vp_reference.csv"
@@ -31,7 +31,7 @@ END_TIME = "19:16"
 NUM_VEHICLES = 176
 VEHICLE_CAPACITY = 4
 DEPOT_ROUTE_NODE_IDS = list(range(1, 11))
-ROLLING_HORIZON_MINUTES = 30
+ROLLING_HORIZON_MINUTES = 60
 REOPTIMIZATION_INTERVAL_MINUTES = 20
 TIME_LIMIT_SECONDS = 20
 
