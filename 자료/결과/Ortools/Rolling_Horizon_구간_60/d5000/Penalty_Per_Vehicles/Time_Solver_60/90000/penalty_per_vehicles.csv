@@ -1,0 +1,13 @@
+﻿revenue,num_vehicles,total_penalty,total_objectives,complete_batch_count,overdue_batch_count,total_batch_count,runtime_seconds,output_directory
+90000,50,325499537,503526294,1694,1626,3320,2465.95,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\Rolling_Horizon_구간_60\d5000\Penalty_Per_Vehicles\Time_Solver_60\90000\vehicles_50
+90000,60,277902996,481830306,1926,1394,3320,2468.691,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\Rolling_Horizon_구간_60\d5000\Penalty_Per_Vehicles\Time_Solver_60\90000\vehicles_60
+90000,70,236782210,468140649,2127,1193,3320,2468.183,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\Rolling_Horizon_구간_60\d5000\Penalty_Per_Vehicles\Time_Solver_60\90000\vehicles_70
+90000,80,198929709,450827810,2315,1005,3320,2467.416,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\Rolling_Horizon_구간_60\d5000\Penalty_Per_Vehicles\Time_Solver_60\90000\vehicles_80
+90000,90,173260529,441501447,2447,873,3320,2468.835,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\Rolling_Horizon_구간_60\d5000\Penalty_Per_Vehicles\Time_Solver_60\90000\vehicles_90
+90000,100,142017737,427386495,2604,716,3320,2470.183,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\Rolling_Horizon_구간_60\d5000\Penalty_Per_Vehicles\Time_Solver_60\90000\vehicles_100
+90000,110,123409221,417195223,2695,625,3320,2468.643,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\Rolling_Horizon_구간_60\d5000\Penalty_Per_Vehicles\Time_Solver_60\90000\vehicles_110
+90000,120,108465477,414303763,2772,548,3320,2468.338,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\Rolling_Horizon_구간_60\d5000\Penalty_Per_Vehicles\Time_Solver_60\90000\vehicles_120
+90000,130,105497468,414747079,2783,537,3320,2468.916,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\Rolling_Horizon_구간_60\d5000\Penalty_Per_Vehicles\Time_Solver_60\90000\vehicles_130
+90000,140,93615136,405958054,2845,475,3320,2471.104,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\Rolling_Horizon_구간_60\d5000\Penalty_Per_Vehicles\Time_Solver_60\90000\vehicles_140
+90000,150,90494856,397051513,2860,460,3320,2470.221,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\Rolling_Horizon_구간_60\d5000\Penalty_Per_Vehicles\Time_Solver_60\90000\vehicles_150
+90000,160,81435780,392964679,2905,415,3320,2471.991,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\Rolling_Horizon_구간_60\d5000\Penalty_Per_Vehicles\Time_Solver_60\90000\vehicles_160

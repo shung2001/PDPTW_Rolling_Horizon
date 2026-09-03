@@ -32,9 +32,10 @@ DEFAULT_DATA_DIR = (
     / "자료"
     / "결과"
     / "Ortools"
+    / "Rolling_Horizon_구간_60"
     / "d5000"
     / "Penalty_Per_Vehicles"
-    / "Remove_Depot"
+    / "Time_Solver_60"
 )
 
 CSV_NAME = "penalty_per_vehicles.csv"

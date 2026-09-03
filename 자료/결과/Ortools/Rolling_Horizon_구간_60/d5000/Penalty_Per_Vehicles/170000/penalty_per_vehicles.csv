@@ -1,0 +1,17 @@
+﻿revenue,num_vehicles,total_penalty,total_objectives,complete_batch_count,overdue_batch_count,total_batch_count,runtime_seconds,output_directory
+170000,50,624670928,822286688,1698,1622,3320,822.455,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\Rolling_Horizon_구간_60\d5000\Penalty_Per_Vehicles\170000\vehicles_50
+170000,55,590407011,796712242,1778,1542,3320,822.703,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\Rolling_Horizon_구간_60\d5000\Penalty_Per_Vehicles\170000\vehicles_55
+170000,60,545536455,765884441,1895,1425,3320,823.075,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\Rolling_Horizon_구간_60\d5000\Penalty_Per_Vehicles\170000\vehicles_60
+170000,65,523190081,753948854,1955,1365,3320,823.432,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\Rolling_Horizon_구간_60\d5000\Penalty_Per_Vehicles\170000\vehicles_65
+170000,70,494035718,733124455,2029,1291,3320,822.328,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\Rolling_Horizon_구간_60\d5000\Penalty_Per_Vehicles\170000\vehicles_70
+170000,75,461578913,711604897,2114,1206,3320,823.046,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\Rolling_Horizon_구간_60\d5000\Penalty_Per_Vehicles\170000\vehicles_75
+170000,80,434280720,695113660,2183,1137,3320,822.584,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\Rolling_Horizon_구간_60\d5000\Penalty_Per_Vehicles\170000\vehicles_80
+170000,85,410920927,680654004,2248,1072,3320,823.176,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\Rolling_Horizon_구간_60\d5000\Penalty_Per_Vehicles\170000\vehicles_85
+170000,90,386851877,662424408,2307,1013,3320,823.022,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\Rolling_Horizon_구간_60\d5000\Penalty_Per_Vehicles\170000\vehicles_90
+170000,95,386148134,660004294,2315,1005,3320,823.283,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\Rolling_Horizon_구간_60\d5000\Penalty_Per_Vehicles\170000\vehicles_95
+170000,100,357004990,641954758,2382,938,3320,822.557,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\Rolling_Horizon_구간_60\d5000\Penalty_Per_Vehicles\170000\vehicles_100
+170000,105,383414338,661337462,2325,995,3320,823.058,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\Rolling_Horizon_구간_60\d5000\Penalty_Per_Vehicles\170000\vehicles_105
+170000,110,376074162,654519006,2343,977,3320,823.411,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\Rolling_Horizon_구간_60\d5000\Penalty_Per_Vehicles\170000\vehicles_110
+170000,115,326392142,618750708,2470,850,3320,823.82,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\Rolling_Horizon_구간_60\d5000\Penalty_Per_Vehicles\170000\vehicles_115
+170000,120,318800006,611150555,2489,831,3320,824.817,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\Rolling_Horizon_구간_60\d5000\Penalty_Per_Vehicles\170000\vehicles_120
+170000,125,382321177,656291097,2335,985,3320,824.446,C:\Users\c\Desktop\대학생활\학연생\새로운_경로방식\PDPTW_Rolling_Horizon\자료\결과\Ortools\Rolling_Horizon_구간_60\d5000\Penalty_Per_Vehicles\170000\vehicles_125

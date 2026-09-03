@@ -20,8 +20,16 @@ from matplotlib.colors import BoundaryNorm, ListedColormap
 
 PDPTW_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_INPUT = (
-    PDPTW_ROOT / "자료" / "결과" / "Ortools" / "d5000"
-    / "Penalty_Per_Vehicles" / "Original" / "130000" / "vehicles_150"
+    PDPTW_ROOT     
+    / "자료"
+    / "결과"
+    / "Ortools"
+    / "Rolling_Horizon_구간_60"
+    / "d5000"
+    / "Penalty_Per_Vehicles"
+    / "Time_Solver_60"
+    / "130000"
+    / "vehicles_150"
     / "rolling_horizon_request_status.csv"
 )
 REQUIRED_COLUMNS = {
