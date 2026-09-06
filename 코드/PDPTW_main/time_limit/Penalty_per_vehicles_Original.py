@@ -18,13 +18,13 @@ import PDPTW_NEW_TEST as pdptw
 
 VEHICLE_CONFIG = {
     "min": 50,
-    "max": 200,
+    "max": 150,
     "step": 10,
 }
 
 REVENUE_CONFIG = {
-    "min": 190000,
-    "max": 190000,
+    "min": 50000,
+    "max": 50000,
     "step": 10000,
 }
 
