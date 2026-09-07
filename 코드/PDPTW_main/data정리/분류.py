@@ -10,17 +10,18 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parents[3]
 
 INPUT_FILE = (
-    BASE_DIR
-    / "자료"
-    / "결과"
-    / "Ortools"
-    / "Rolling_Horizon_구간_60"
-    / "d5000"
-    / "Penalty_Per_Vehicles"
-    / "Time_Solver_60"
-    / "130000"
-    / "vehicles_150"
-    / "node_vehicle_occupancy_by_minute.csv"
+    BASE_DIR/
+    '자료'/
+    '결과'/
+    'Ortools'/
+    'Rolling_Horizon_구간_30'/
+    'd5000'/
+    'Penalty_Per_Vehicles'/
+    'Time_Solver_20'/
+    'add_6mins_penalty_수정_2'/
+    '130000'/
+    'vehicles_150'/
+    'node_vehicle_occupancy_by_minute.csv'
 )
 
 GROUP_COLUMN = "physical_address"
