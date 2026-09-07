@@ -1,30 +1,9 @@
-"""Create a per-vehicle time bar chart for every available scenario.
-
-The default scan covers Revenue folders from 50,000 through 200,000 in
-10,000-unit increments.  A missing Revenue folder is skipped.  Within each
-available Revenue folder, every directory named ``vehicles_<number>`` is
-processed and two charts are saved:
-
-* ``vehicles_<number>/막대그래프.png``: three separate panels
-* ``vehicles_<number>/다중막대그래프.png``: three side-by-side bars per vehicle
-
-The chart uses these fields:
-
-* ``total_ground_time_min``
-* ``passenger_flight_time_min``
-* ``empty_flight_time_min``
-
-Some existing ``vehicle_summary.csv`` files do not yet contain the two flight
-time fields.  In that case they are reconstructed from ``vehicle_route_legs.csv``
-using ``travel_time`` and ``movement_type``.  The reconstructed sum is checked
-against ``total_flight_time_min`` when that field is available.
-"""
+"""Create two vehicle time charts from one result folder or vehicle_summary.csv."""
 
 from __future__ import annotations
 
 import argparse
 import math
-import re
 from pathlib import Path
 
 import matplotlib
@@ -50,18 +29,14 @@ DEFAULT_DATA_DIR = (
     "Penalty_Per_Vehicles" / 
     "Time_Solver_20" / 
     "add_6mins_penalty_수정_2" /
-    "Original"
+    "Original" / "vehicle_150"
 )
 
-DEFAULT_REVENUE_START = 50_000
-DEFAULT_REVENUE_STOP = 200_000
-DEFAULT_REVENUE_STEP = 10_000
 
 SUMMARY_NAME = "vehicle_summary.csv"
 LEGS_NAME = "vehicle_route_legs.csv"
 OUTPUT_NAME = "막대그래프.png"
 GROUPED_OUTPUT_NAME = "다중막대그래프.png"
-VEHICLE_DIR_PATTERN = re.compile(r"^vehicles_(\d+)$")
 
 GROUND_COLUMN = "total_ground_time_min"
 PASSENGER_COLUMN = "passenger_flight_time_min"
@@ -82,55 +57,17 @@ SERIES_COLORS = {
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description=(
-            "Create vehicle-level ground/passenger-flight/empty-flight time "
-            "bar charts for all available Revenue and vehicle-count folders."
-        )
+        description="Create two vehicle time charts from one result folder."
     )
     parser.add_argument(
-        "--data-dir",
-        type=Path,
-        default=DEFAULT_DATA_DIR,
-        help=f"Penalty_Per_Vehicles directory (default: {DEFAULT_DATA_DIR})",
+        "--data-dir", type=Path, default=DEFAULT_DATA_DIR,
+        help="Result folder or vehicle_summary.csv path",
     )
-    parser.add_argument(
-        "--revenue-start",
-        type=int,
-        default=DEFAULT_REVENUE_START,
-        help=f"First Revenue value, inclusive (default: {DEFAULT_REVENUE_START})",
-    )
-    parser.add_argument(
-        "--revenue-stop",
-        type=int,
-        default=DEFAULT_REVENUE_STOP,
-        help=f"Last Revenue value, inclusive (default: {DEFAULT_REVENUE_STOP})",
-    )
-    parser.add_argument(
-        "--revenue-step",
-        type=int,
-        default=DEFAULT_REVENUE_STEP,
-        help=f"Revenue range step (default: {DEFAULT_REVENUE_STEP})",
-    )
-    parser.add_argument(
-        "--dpi",
-        type=int,
-        default=180,
-        help="Output PNG resolution (default: 180)",
-    )
-    return parser.parse_args()
-
-
-def validate_args(args: argparse.Namespace) -> None:
-    if args.revenue_step <= 0:
-        raise ValueError(f"revenue-step must be positive: {args.revenue_step}")
-    if args.revenue_start > args.revenue_stop:
-        raise ValueError(
-            "revenue-start must be less than or equal to revenue-stop: "
-            f"{args.revenue_start} > {args.revenue_stop}"
-        )
+    parser.add_argument("--dpi", type=int, default=180)
+    args = parser.parse_args()
     if args.dpi <= 0:
-        raise ValueError(f"dpi must be positive: {args.dpi}")
-
+        parser.error("--dpi must be positive")
+    return args
 
 def numeric_series(frame: pd.DataFrame, column: str, csv_path: Path) -> pd.Series:
     """Return a finite, non-negative numeric column or raise a clear error."""
@@ -240,22 +177,6 @@ def load_vehicle_times(vehicle_dir: Path) -> pd.DataFrame:
     return frame.loc[:, ["vehicle_id", *PLOT_COLUMNS]].sort_values("vehicle_id")
 
 
-def vehicle_count_from_dir(vehicle_dir: Path) -> int:
-    match = VEHICLE_DIR_PATTERN.fullmatch(vehicle_dir.name)
-    if match is None:
-        raise ValueError(f"Invalid vehicle directory name: {vehicle_dir}")
-    return int(match.group(1))
-
-
-def vehicle_directories(revenue_dir: Path) -> list[Path]:
-    directories = [
-        path
-        for path in revenue_dir.iterdir()
-        if path.is_dir() and VEHICLE_DIR_PATTERN.fullmatch(path.name)
-    ]
-    return sorted(directories, key=vehicle_count_from_dir)
-
-
 def label_step(vehicle_count: int) -> int:
     """Keep roughly 25 x-axis labels even for the largest scenarios."""
     return max(1, math.ceil(vehicle_count / 25))
@@ -271,7 +192,6 @@ def configure_axis(ax: Axes, title: str) -> None:
 
 def save_bar_chart(
     frame: pd.DataFrame,
-    revenue: int,
     vehicle_count: int,
     output_path: Path,
     dpi: int,
@@ -302,7 +222,7 @@ def save_bar_chart(
         ax.set_xlim(-0.7, row_count - 0.3)
 
     fig.suptitle(
-        f"Vehicle Time Breakdown | Revenue {revenue:,} | {vehicle_count} Vehicles",
+        f"Vehicle Time Breakdown | {vehicle_count} Vehicles",
         fontsize=16,
         fontweight="bold",
         y=0.995,
@@ -315,7 +235,6 @@ def save_bar_chart(
 
 def save_grouped_bar_chart(
     frame: pd.DataFrame,
-    revenue: int,
     vehicle_count: int,
     output_path: Path,
     dpi: int,
@@ -348,7 +267,7 @@ def save_grouped_bar_chart(
     configure_axis(ax, "")
     ax.legend(title="Time type")
     ax.set_title(
-        f"Vehicle Time Comparison | Revenue {revenue:,} | "
+        f"Vehicle Time Comparison | "
         f"{vehicle_count} Vehicles",
         fontsize=16,
         fontweight="bold",
@@ -362,69 +281,28 @@ def save_grouped_bar_chart(
     plt.close(fig)
 
 
-def revenue_values(start: int, stop: int, step: int) -> range:
-    """Return an inclusive Revenue range."""
-    return range(start, stop + 1, step)
-
-
 def main() -> None:
     args = parse_args()
-    validate_args(args)
-    data_dir = args.data_dir.resolve()
-    if not data_dir.is_dir():
-        raise FileNotFoundError(f"Data directory not found: {data_dir}")
+    vehicle_dir = args.data_dir.resolve()
+    if vehicle_dir.is_file():
+        if vehicle_dir.name != SUMMARY_NAME:
+            raise ValueError(f"Expected {SUMMARY_NAME}: {vehicle_dir}")
+        vehicle_dir = vehicle_dir.parent
+    if not vehicle_dir.is_dir():
+        raise FileNotFoundError(f"Result directory not found: {vehicle_dir}")
 
-    created: list[Path] = []
-    skipped_revenues: list[int] = []
-    empty_revenues: list[int] = []
-
-    for revenue in revenue_values(
-        args.revenue_start, args.revenue_stop, args.revenue_step
+    frame = load_vehicle_times(vehicle_dir)
+    for save_chart, name in (
+        (save_bar_chart, OUTPUT_NAME),
+        (save_grouped_bar_chart, GROUPED_OUTPUT_NAME),
     ):
-        revenue_dir = data_dir / str(revenue)
-        if not revenue_dir.is_dir():
-            skipped_revenues.append(revenue)
-            continue
-
-        directories = vehicle_directories(revenue_dir)
-        if not directories:
-            empty_revenues.append(revenue)
-            continue
-
-        for vehicle_dir in directories:
-            frame = load_vehicle_times(vehicle_dir)
-            vehicle_count = vehicle_count_from_dir(vehicle_dir)
-
-            output_path = vehicle_dir / OUTPUT_NAME
-            save_bar_chart(
-                frame=frame,
-                revenue=revenue,
-                vehicle_count=vehicle_count,
-                output_path=output_path,
-                dpi=args.dpi,
-            )
-            created.append(output_path)
-            print(f"created: {output_path}")
-
-            grouped_output_path = vehicle_dir / GROUPED_OUTPUT_NAME
-            save_grouped_bar_chart(
-                frame=frame,
-                revenue=revenue,
-                vehicle_count=vehicle_count,
-                output_path=grouped_output_path,
-                dpi=args.dpi,
-            )
-            created.append(grouped_output_path)
-            print(f"created: {grouped_output_path}")
-
-    print(f"charts_created={len(created)}")
-    print(f"missing_revenue_folders_skipped={len(skipped_revenues)}")
-    if skipped_revenues:
-        print("missing_revenues=" + ",".join(map(str, skipped_revenues)))
-    if empty_revenues:
-        print("revenues_without_vehicle_folders=" + ",".join(map(str, empty_revenues)))
-    if not created:
-        raise RuntimeError("No charts were created for the requested Revenue range")
+        output_path = vehicle_dir / name
+        save_chart(
+            frame=frame, vehicle_count=len(frame),
+            output_path=output_path, dpi=args.dpi,
+        )
+        print(f"created: {output_path}")
+    print(f"vehicles={len(frame)}, charts_created=2")
 
 
 if __name__ == "__main__":
