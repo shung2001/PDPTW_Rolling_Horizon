@@ -429,10 +429,8 @@ def build_horizon_model(active: list[RequestTask], batches: dict[str, BatchState
     routing.SetArcCostEvaluatorOfAllVehicles(ci) # distance에 대한 cost 평가
     model_end = he + int(flight_time.to_numpy().max()) * 4 + SERVICE_TIME_MINUTES * 4 # 비행 마무리 시간에 대한 여유 분 제공. -> 일몰 시간(End_Time) 이전의 request_OD를 전부 처리하고 Depot으로 복귀하는 여유시간 
     routing.AddDimension(ti, model_end, model_end, False, "Time") # 선택한 모든 경로들 model_end 이전에 끝내도록 설정
-    td = routing.GetDimensionOrDie("Time")
-    # [추가 수정] 차량이 노드에서 대기하는 Time Dimension Slack에 1분당 20,000원의 Idle penalty를 부과한다.
-    # 비행/서비스 시간은 time_cb의 transit에 포함되므로 이 penalty는 Slack(대기시간)에만 적용된다.
-    td.SetSlackCostCoefficientForAllVehicles(IDLE_COST_PER_MIN)
+    td = routing.GetDimensionOrDie("Time") # 위에서 설정한 Adddimension의 제약에 접근한다.
+    td.SetSlackCostCoefficientForAllVehicles(IDLE_COST_PER_MIN) # slack(여유,대기 시간에 대한 cost, 위에서 설정함)를 부여. 이때, slack은 사실상 parking_time과 동일 
     max_range_m, reserve_m = int(MAX_REMAINING_RANGE_KM * 1000), int(MIN_REMAINING_RANGE_KM * 1000) # 최대 비행가능 거리 및 최소 비행가능 거리에 대한 설정
     routing.AddDimension(ri, max_range_m, max_range_m, False, "RemainingRange") # 각 process마다 계산을 진행
     rd = routing.GetDimensionOrDie("RemainingRange") # 위의 각 process를 진행할 때마다 값을 축적해서 계산을 진행, 즉, remaining_range를 업데이트
