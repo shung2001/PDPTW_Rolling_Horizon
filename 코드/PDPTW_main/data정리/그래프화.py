@@ -36,7 +36,7 @@ DEFAULT_DATA_DIR = (
     "d5000" / 
     "Penalty_Per_Vehicles" / 
     "Time_Solver_20" / 
-    "add_3mins_penalty_수정_1"
+    "add_6mins_penalty_수정_1"
 )
 
 CSV_NAME = "penalty_per_vehicles.csv"

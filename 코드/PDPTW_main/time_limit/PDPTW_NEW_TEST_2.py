@@ -24,7 +24,7 @@ TIME_MATRIX_PATH = INPUT_DIR / "flight_time_matrix_min_remove_fuel.csv"
 NODE_REFERENCE_PATH = INPUT_DIR / "vp_reference.csv"
 TRANSPORTATION_MATRIX_PATH = PROJECT_DIR / "자료" / "결과" / "차량_교통수단" /"public_transit_time_matrix_tmap_min.csv"
 TRANSPORTATION_MATRIX_COST = PROJECT_DIR / "자료" / "결과" / "차량_교통수단" / "public_transit_fare_matrix_tmap_krw.csv"
-OUTPUT_DIR = PROJECT_DIR / "자료" / "결과" / "Ortools" / "Rolling_Horizon_구간_30" / "d5000" / "Penalty_Per_Vehicles" / "Time_Solver_20" / "add_6mins_penalty_수정_1" / "Original"
+OUTPUT_DIR = PROJECT_DIR / "자료" / "결과" / "Ortools" / "Rolling_Horizon_구간_30" / "d5000" / "Penalty_Per_Vehicles" / "Time_Solver_20" / "add_6mins_penalty_수정_2" / "Original"
 
 BASE_TIME = "05:40"
 END_TIME = "19:16"
@@ -42,7 +42,7 @@ REVENUE = 100000
 HOVERING_LIFT_OFF_COST = 18404
 MIN_PER_OPERATING = 1247
 MIN_PER_MECHANIC = 9140
-IDLE_COST_PER_MIN = 2000  # Time Dimension slack(지상 대기) 1분당 penalty
+IDLE_COST_PER_MIN = 20000  # Time Dimension slack(지상 대기) 1분당 penalty
 INITIAL_REMAINING_RANGE_KM = 160.0
 MAX_REMAINING_RANGE_KM = 160.0
 MIN_REMAINING_RANGE_KM = 15.0
@@ -419,16 +419,6 @@ def build_horizon_model(active: list[RequestTask], batches: dict[str, BatchState
         flight_min = int(flight_time.loc[location(f), location(t)])
         return HOVERING_LIFT_OFF_COST + flight_min * (MIN_PER_OPERATING + MIN_PER_MECHANIC)
 
-    # [추가 수정] 실제 Empty repositioning 비행 1회에 REVENUE 기회비용을 부과하기 위한 0/1 transit.
-    # 가상 End 및 마지막 의무 Depot 복귀에는 Empty opportunity cost를 부과하지 않는다.
-    def flight_leg_cb(fi: int, ti: int) -> int:
-        f, t = manager.IndexToNode(fi), manager.IndexToNode(ti)
-        if vehicle_count <= t < vehicle_count * 2:
-            return 0
-        if location(f) == location(t):
-            return 0
-        return 1
-    
     def range_cb(fi: int, ti: int) -> int: # 각 경로별 거리 출력 이 거리를 통해 vehicle의 잔여 비행가능 거리를 업데이트 
         return -distance_cb(fi, ti) # 각 경로별 거리 출력 이 거리를 통해 vehicle의 잔여 비행가능 거리를 업데이트 
 
@@ -436,12 +426,11 @@ def build_horizon_model(active: list[RequestTask], batches: dict[str, BatchState
     di = routing.RegisterTransitCallback(distance_cb) # 경로별 거리
     ri = routing.RegisterTransitCallback(range_cb) # 비행기 잔여 비행가능 거리 
     ci = routing.RegisterTransitCallback(cost_cb)
-    flight_leg_i = routing.RegisterTransitCallback(flight_leg_cb)
     routing.SetArcCostEvaluatorOfAllVehicles(ci) # distance에 대한 cost 평가
     model_end = he + int(flight_time.to_numpy().max()) * 4 + SERVICE_TIME_MINUTES * 4 # 비행 마무리 시간에 대한 여유 분 제공. -> 일몰 시간(End_Time) 이전의 request_OD를 전부 처리하고 Depot으로 복귀하는 여유시간 
     routing.AddDimension(ti, model_end, model_end, False, "Time") # 선택한 모든 경로들 model_end 이전에 끝내도록 설정
     td = routing.GetDimensionOrDie("Time")
-    # [추가 수정] 차량이 노드에서 대기하는 Time Dimension Slack에 1분당 2,000원의 Idle penalty를 부과한다.
+    # [추가 수정] 차량이 노드에서 대기하는 Time Dimension Slack에 1분당 20,000원의 Idle penalty를 부과한다.
     # 비행/서비스 시간은 time_cb의 transit에 포함되므로 이 penalty는 Slack(대기시간)에만 적용된다.
     td.SetSlackCostCoefficientForAllVehicles(IDLE_COST_PER_MIN)
     max_range_m, reserve_m = int(MAX_REMAINING_RANGE_KM * 1000), int(MIN_REMAINING_RANGE_KM * 1000) # 최대 비행가능 거리 및 최소 비행가능 거리에 대한 설정
@@ -487,32 +476,6 @@ def build_horizon_model(active: list[RequestTask], batches: dict[str, BatchState
         demands[node] = task.passengers if event == "Pickup" else -task.passengers  # type: ignore[union-attr]
     demand_idx = routing.RegisterUnaryTransitCallback(lambda index: demands[manager.IndexToNode(index)])
     routing.AddDimensionWithVehicleCapacity(demand_idx, 0, [VEHICLE_CAPACITY] * vehicle_count, True, "Capacity")
-
-    # [추가 수정] event의 승객 증감량을 이용해 각 arc 비행 시점의 잔여 좌석 수를 추적한다.
-    # RemainingSeats == VEHICLE_CAPACITY이면 onboard=0이므로 Empty flight이다.
-    remaining_seat_idx = routing.RegisterUnaryTransitCallback(
-        lambda index: -demands[manager.IndexToNode(index)]
-    )
-    routing.AddDimension(remaining_seat_idx, 0, VEHICLE_CAPACITY, False, "RemainingSeats")
-    remaining_seat_dimension = routing.GetDimensionOrDie("RemainingSeats")
-
-    for v in vehicles:
-        si = routing.Start(v.vehicle_id)
-        onboard_at_start = sum(v.onboard_batches.values())
-        remaining_seat_dimension.CumulVar(si).SetValue(VEHICLE_CAPACITY - onboard_at_start)
-
-    # 실제 위치 이동 여부(0/1)를 별도 Dimension으로 두고,
-    # Empty일 때만 각 비행 leg에 REVENUE를 1회 추가한다.
-    routing.AddDimension(flight_leg_i, 0, cursor, True, "FlightLeg")
-    for v in vehicles:
-        routing.SetPathEnergyCostsOfVehicle(
-            "RemainingSeats",
-            "FlightLeg",
-            VEHICLE_CAPACITY - 1,
-            0,
-            REVENUE,
-            v.vehicle_id,
-        )
 
     return HorizonModel(manager, routing, td, rd, node_meta, pickup_nodes, delivery_nodes) 
 
@@ -1122,15 +1085,7 @@ def main() -> None:
             errors="raise",
         ).sum()
     )
-    # [추가 수정] Solver에서 Empty repositioning 1회마다 부과한 REVENUE 기회비용을 최종 objective 집계에도 반영한다.
-    total_empty_opportunity_cost = int(
-        (
-            route_df["event"].eq("Movement")
-            & route_df["movement_type"].eq("empty_repositioning")
-        ).sum() * REVENUE
-    ) if not route_df.empty else 0
-    demand_summary_df["total_empty_opportunity_cost"] = total_empty_opportunity_cost
-    demand_summary_df["total_objectives"] = total_operating_cost + total_empty_opportunity_cost + total_overdue_cost
+    demand_summary_df["total_objectives"] = total_operating_cost + total_overdue_cost
 
     save_csv(status_df, "rolling_horizon_request_status.csv")
     save_csv(route_output_df, "vehicle_route_legs.csv")
