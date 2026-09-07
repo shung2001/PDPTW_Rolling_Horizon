@@ -49,7 +49,8 @@ DEFAULT_DATA_DIR = (
     "d5000" / 
     "Penalty_Per_Vehicles" / 
     "Time_Solver_20" / 
-    "add_3mins_penalty_수정_2"
+    "add_3mins_penalty_수정_2" /
+    "Original"
 )
 
 DEFAULT_REVENUE_START = 50_000
