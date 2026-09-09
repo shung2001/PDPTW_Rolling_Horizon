@@ -27,10 +27,9 @@ DEFAULT_DATA_DIR = (
     "Rolling_Horizon_구간_30" / 
     "d5000" / 
     "Penalty_Per_Vehicles" / 
-    "Time_Solver_20" / 
+    "Time_Solver_120" / 
     "add_6mins_penalty_수정_2" /
-    "Original" / "vehicle_150"
-)
+    "Original")
 
 
 SUMMARY_NAME = "vehicle_summary.csv"
