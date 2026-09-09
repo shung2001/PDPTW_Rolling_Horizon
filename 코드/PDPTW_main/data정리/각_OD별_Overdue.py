@@ -1,8 +1,8 @@
-"""시작 시각별·출발 노드별 Overdue 발생 빈도를 PNG 히트맵으로 저장한다.
+"""시작 시각별·OD별 Overdue 발생 빈도를 PNG 히트맵으로 저장한다.
 
-Overdue가 발생한 노드는 요청의 ``origin``으로 정의하고, 발생 시각은
+OD는 요청의 ``origin`` → ``destination`` 방향 쌍으로 정의하고, 집계 시각은
 ``time_window_start_hhmm``을 사용한다. 각 셀의 색과 숫자는 해당 시간 구간에
-해당 노드에서 시작한 Overdue 요청의 수를 나타낸다.
+해당 OD에서 시작한 Overdue 요청의 수를 나타낸다.
 """
 
 from __future__ import annotations
@@ -33,19 +33,19 @@ DEFAULT_INPUT = (
     / "Original"
     / "rolling_horizon_request_status.csv"
 )
-REQUIRED_COLUMNS = {"final_status", "origin", "time_window_start_hhmm"}
+REQUIRED_COLUMNS = {"final_status", "origin", "destination", "time_window_start_hhmm"}
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="시작 시각별·출발 노드별 Overdue 빈도 히트맵을 생성합니다."
+        description="시작 시각별·OD별 Overdue 빈도 히트맵을 생성합니다."
     )
     parser.add_argument("--input", type=Path, default=DEFAULT_INPUT)
     parser.add_argument(
         "--output",
         type=Path,
         default=None,
-        help="출력 PNG 경로 (기본값: 입력 CSV 폴더의 *_overdue_by_node.png)",
+        help="출력 PNG 경로 (기본값: 입력 CSV 폴더의 *_overdue_by_od.png)",
     )
     parser.add_argument(
         "--time-bin",
@@ -67,32 +67,46 @@ def natural_node_key(value: object) -> tuple[int, float | str]:
 
 
 def prepare_frequency_table(data: pd.DataFrame, time_bin: int) -> pd.DataFrame:
+    if time_bin <= 0 or 60 % time_bin != 0:
+        raise ValueError("time_bin은 60의 약수인 양의 정수여야 합니다.")
     status = data["final_status"].fillna("").str.strip().str.casefold()
-    overdue = data.loc[status.eq("overdue"), ["origin", "time_window_start_hhmm"]].copy()
+    overdue = data.loc[status.eq("overdue"), ["origin", "destination", "time_window_start_hhmm"]].copy()
     if overdue.empty:
         raise ValueError("입력 파일에 final_status가 Overdue인 행이 없습니다.")
 
     overdue["origin"] = overdue["origin"].astype("string").str.strip()
+    overdue["destination"] = overdue["destination"].astype("string").str.strip()
     parsed = pd.to_datetime(
         overdue["time_window_start_hhmm"].astype("string").str.strip(),
         format="%H:%M",
         errors="coerce",
     )
-    invalid = parsed.isna() | overdue["origin"].isna() | overdue["origin"].eq("")
+    invalid = (
+        parsed.isna()
+        | overdue["origin"].isna() | overdue["origin"].eq("")
+        | overdue["destination"].isna() | overdue["destination"].eq("")
+    )
     if invalid.any():
         bad_rows = overdue.index[invalid].tolist()[:10]
-        raise ValueError(f"노드 또는 시작 시각이 잘못된 Overdue 행이 있습니다: {bad_rows}")
+        raise ValueError(f"OD 또는 시작 시각이 잘못된 Overdue 행이 있습니다: {bad_rows}")
 
     start_minutes = parsed.dt.hour * 60 + parsed.dt.minute
     overdue["time_bin_minutes"] = (start_minutes // time_bin) * time_bin
 
-    nodes = sorted(overdue["origin"].unique(), key=natural_node_key)
+    # Overdue가 있는 방향별 OD만 표시한다. A→B와 B→A는 서로 다른 행이다.
+    pairs = sorted(
+        set(zip(overdue["origin"], overdue["destination"])),
+        key=lambda pair: (natural_node_key(pair[0]), natural_node_key(pair[1])),
+    )
+    od_index = pd.MultiIndex.from_tuples(pairs, names=["origin", "destination"])
     first_bin = int(overdue["time_bin_minutes"].min())
     last_bin = int(overdue["time_bin_minutes"].max())
     all_bins = list(range(first_bin, last_bin + time_bin, time_bin))
 
-    frequency = pd.crosstab(overdue["origin"], overdue["time_bin_minutes"])
-    return frequency.reindex(index=nodes, columns=all_bins, fill_value=0)
+    frequency = overdue.groupby(
+        ["origin", "destination", "time_bin_minutes"]
+    ).size().unstack("time_bin_minutes", fill_value=0)
+    return frequency.reindex(index=od_index, columns=all_bins, fill_value=0)
 
 
 def save_heatmap(
@@ -126,11 +140,11 @@ def save_heatmap(
         ha="right",
     )
     ax.set_yticks(np.arange(frequency.shape[0]))
-    ax.set_yticklabels([f"Node {node}" for node in frequency.index])
-    ax.set_xlabel(f"Overdue 시작 시각 ({time_bin}분 간격)")
-    ax.set_ylabel("출발 노드 (origin)")
+    ax.set_yticklabels([f"{origin} → {destination}" for origin, destination in frequency.index])
+    ax.set_xlabel(f"요청 시작 시각 ({time_bin}분 간격)")
+    ax.set_ylabel("OD (origin → destination)")
     ax.set_title(
-        "Overdue 발생 시각 및 노드별 빈도\n"
+        "요청 시작 시각 및 OD별 Overdue 빈도\n"
         f"총 {int(values.sum()):,}건",
         fontsize=15,
         fontweight="bold",
@@ -173,7 +187,7 @@ def main() -> None:
     output_path = (
         args.output.expanduser().resolve()
         if args.output
-        else input_path.with_name(f"{input_path.stem}_overdue_by_node.png")
+        else input_path.with_name(f"{input_path.stem}_overdue_by_od.png")
     )
     if output_path.suffix.casefold() != ".png":
         raise ValueError("--output 경로의 확장자는 .png여야 합니다.")
@@ -187,7 +201,7 @@ def main() -> None:
     frequency = prepare_frequency_table(data, args.time_bin)
     save_heatmap(frequency, output_path, args.time_bin, args.dpi)
     print(f"Overdue 총 발생 건수: {int(frequency.to_numpy().sum()):,}건")
-    print(f"분석 노드 수: {frequency.shape[0]:,}개")
+    print(f"분석 OD 수: {frequency.shape[0]:,}개")
     print(f"PNG 저장 완료: {output_path}")
 
 

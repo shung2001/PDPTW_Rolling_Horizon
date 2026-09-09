@@ -19,18 +19,17 @@ import pandas as pd
 
 BASE_DIR = Path(__file__).resolve().parents[3]
 DEFAULT_DATA_DIR = (
-    BASE_DIR/
-    '자료'/
-    '결과'/
-    'Ortools'/
-    'Rolling_Horizon_구간_30'/
-    'd5000'/
-    'Penalty_Per_Vehicles'/
-    'Time_Solver_20'/
-    'add_6mins_penalty_수정_2'/
-    '130000'/
-    'vehicles_150'/
-    "분류된_노드"
+    BASE_DIR
+    / "자료"
+    / "결과"
+    / "Ortools"
+    / "Rolling_Horizon_구간_30"
+    / "d5000"
+    / "Penalty_Per_Vehicles"
+    / "Time_Solver_120"
+    / "add_6mins_penalty_수정_2"
+    / "Original"
+    / "분류된_노드"
 )
 
 # 출력할 Depot 순서와 실제 CSV 파일명

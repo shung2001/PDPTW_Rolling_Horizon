@@ -1,8 +1,10 @@
-"""전체 요청의 time window를 시간대별·OD별 히트맵으로 시각화한다.
+"""Complete 요청의 time window를 시간대별·OD별 히트맵으로 시각화한다.
 
+final_status가 Complete인 요청만 사용한다(대소문자 및 앞뒤 공백 무시).
+실제 운행 시간이 아닌 요청의 time window를 표시한다.
 각 요청은 ``time_window_start_hhmm``부터 ``time_window_end_hhmm``까지
 실제로 겹치는 모든 시간 구간에 집계된다. 세로축은 origin → destination,
-가로축은 시간이며 셀의 색은 해당 시간에 활성화된 time window 수이다.
+가로축은 시간이며 셀의 색과 숫자는 해당 시간에 활성화된 time window 수이다.
 """
 
 from __future__ import annotations
@@ -34,6 +36,7 @@ DEFAULT_INPUT = (
     / "rolling_horizon_request_status.csv"
 )
 REQUIRED_COLUMNS = {
+    "final_status",
     "origin",
     "destination",
     "time_window_start_hhmm",
@@ -43,14 +46,14 @@ REQUIRED_COLUMNS = {
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="전체 요청의 time window를 시간대별·OD별 PNG 히트맵으로 만듭니다."
+        description="Complete 요청의 time window를 시간대별·OD별 PNG 히트맵으로 만듭니다."
     )
     parser.add_argument("--input", type=Path, default=DEFAULT_INPUT)
     parser.add_argument(
         "--output",
         type=Path,
         default=None,
-        help="출력 PNG 경로 (기본값: 입력 CSV 폴더의 *_all_time_windows_od.png)",
+        help="출력 PNG 경로 (기본값: 입력 CSV 폴더의 *_complete_time_windows_od.png)",
     )
     parser.add_argument(
         "--time-bin",
@@ -81,6 +84,10 @@ def sortable_node(value: str) -> tuple[int, float | str]:
 
 
 def prepare_od_time_windows(data: pd.DataFrame, time_bin: int) -> pd.DataFrame:
+    status = data["final_status"].fillna("").astype("string").str.strip().str.casefold()
+    data = data.loc[status.eq("complete")]
+    if data.empty:
+        raise ValueError("입력 파일에 final_status가 Complete인 행이 없습니다.")
     working = data[list(REQUIRED_COLUMNS)].copy()
     working["origin"] = working["origin"].astype("string").str.strip()
     working["destination"] = working["destination"].astype("string").str.strip()
@@ -165,7 +172,7 @@ def save_heatmap(
     ax.set_xlabel(f"시간대 ({time_bin}분 간격)")
     ax.set_ylabel("Origin → Destination")
     ax.set_title(
-        "시간대별 전체 요청 Time Window (OD별)\n"
+        "시간대별 Complete 요청 Time Window (OD별)\n"
         f"총 요청 {request_count:,}건 · 색과 숫자는 해당 시간대에 활성화된 time window 수",
         fontsize=15,
         fontweight="bold",
@@ -203,7 +210,7 @@ def main() -> None:
     output_path = (
         args.output.expanduser().resolve()
         if args.output
-        else input_path.with_name(f"{input_path.stem}_all_time_windows_od.png")
+        else input_path.with_name(f"{input_path.stem}_complete_time_windows_od.png")
     )
     if output_path.suffix.casefold() != ".png":
         raise ValueError("--output 경로의 확장자는 .png여야 합니다.")
@@ -215,8 +222,11 @@ def main() -> None:
         raise KeyError(f"입력 CSV에 필수 컬럼이 없습니다: {sorted(missing)}")
 
     frequency = prepare_od_time_windows(data, args.time_bin)
-    save_heatmap(frequency, len(data), args.time_bin, output_path, args.dpi)
-    print(f"전체 요청: {len(data):,}건")
+    complete_count = int(
+        data["final_status"].fillna("").astype("string").str.strip().str.casefold().eq("complete").sum()
+    )
+    save_heatmap(frequency, complete_count, args.time_bin, output_path, args.dpi)
+    print(f"Complete 요청: {complete_count:,}건")
     print(f"OD 조합: {frequency.shape[0]:,}개")
     print(f"PNG 저장 완료: {output_path}")
 
