@@ -30,7 +30,7 @@ BASE_TIME = "05:40"
 END_TIME = "19:16"
 NUM_VEHICLES = 176
 VEHICLE_CAPACITY = 4
-DEPOT_ROUTE_NODE_IDS = list(range(1, 11))
+DEPOT_ROUTE_NODE_IDS = None  # Use all vp_id values from the selected node reference.
 ROLLING_HORIZON_MINUTES = 30
 REOPTIMIZATION_INTERVAL_MINUTES = 20
 TIME_LIMIT_SECONDS = 20
@@ -193,10 +193,14 @@ def load_named_matrix(path: Path, nodes: dict[str, NodeInfo]) -> pd.DataFrame:
     df = read_table(path)
     df = df.set_index(df.columns[0])
     name_to_id = {node.address.strip(): node_id for node_id, node in nodes.items()}
-    unknown_rows = [str(v) for v in df.index if str(v).strip() not in name_to_id]
-    unknown_cols = [str(v) for v in df.columns if str(v).strip() not in name_to_id]
-    if unknown_rows or unknown_cols:
-        raise ValueError(f"Transportation matrix의 vertiport 이름이 vp_reference와 다릅니다: rows={unknown_rows}, cols={unknown_cols}")
+    df.index = [str(v).strip() for v in df.index]
+    df.columns = [str(v).strip() for v in df.columns]
+    selected_names = list(name_to_id)
+    missing_rows = [name for name in selected_names if name not in df.index]
+    missing_cols = [name for name in selected_names if name not in df.columns]
+    if missing_rows or missing_cols:
+        raise ValueError(f"Selected vertiports missing from transportation matrix: rows={missing_rows}, cols={missing_cols}")
+    df = df.loc[selected_names, selected_names]
     df.index = [name_to_id[str(v).strip()] for v in df.index]
     df.columns = [name_to_id[str(v).strip()] for v in df.columns]
     return df.apply(pd.to_numeric, errors="raise").astype(float)
@@ -804,11 +808,20 @@ def save_csv(df: pd.DataFrame, filename: str) -> None:
 def main() -> None:
     started = time.perf_counter()
     distance, flight_time, nodes = load_matrix(DISTANCE_MATRIX_PATH, False), load_matrix(TIME_MATRIX_PATH, True), load_nodes(NODE_REFERENCE_PATH)
+    selected_ids = list(nodes)
+    if not selected_ids:
+        raise ValueError("Node reference is empty")
+    for label, matrix in (("distance", distance), ("flight_time", flight_time)):
+        missing = [node_id for node_id in selected_ids if node_id not in matrix.index or node_id not in matrix.columns]
+        if missing:
+            raise ValueError(f"Selected vp_id missing from {label} matrix: {missing}")
+    distance = distance.loc[selected_ids, selected_ids]
+    flight_time = flight_time.loc[selected_ids, selected_ids]
     transportation_matrix = load_named_matrix(TRANSPORTATION_MATRIX_PATH, nodes)
     fare_matrix = load_named_matrix(TRANSPORTATION_MATRIX_COST, nodes)
     if set(distance.index) != set(flight_time.index) or not set(distance.index).issubset(nodes):
         raise ValueError("distance/time/node-reference의 node 집합이 일치하지 않습니다")
-    depots = [normalize_id(v) for v in DEPOT_ROUTE_NODE_IDS]
+    depots = selected_ids.copy() if DEPOT_ROUTE_NODE_IDS is None else [normalize_id(v) for v in DEPOT_ROUTE_NODE_IDS]
     missing = [v for v in depots if v not in distance.index]
     if missing:
         raise ValueError(f"Depot node가 행렬에 없습니다: {missing}")

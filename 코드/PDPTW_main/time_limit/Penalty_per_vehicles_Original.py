@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pandas as pd
 
-import PDPTW_NEW_TEST_2 as pdptw
+import PDPTW_NEW_TEST_축소 as pdptw
 
 
 VEHICLE_CONFIG = {
@@ -23,8 +23,8 @@ VEHICLE_CONFIG = {
 }
 
 REVENUE_CONFIG = {
-    "min": 190000,
-    "max": 190000,
+    "min": 170000,
+    "max": 170000,
     "step": 10000,
 }
 
