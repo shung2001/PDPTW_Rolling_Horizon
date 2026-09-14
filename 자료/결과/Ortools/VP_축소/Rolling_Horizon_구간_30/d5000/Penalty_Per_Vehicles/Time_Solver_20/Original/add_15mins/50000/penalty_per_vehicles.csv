@@ -1,0 +1,11 @@
+﻿revenue,num_vehicles,total_penalty,total_objectives,complete_batch_count,overdue_batch_count,total_batch_count,runtime_seconds,output_directory
+50000,50,20724687,55903844,386,191,577,803.919,C:\Users\choih\Desktop\연구\PDPTW\자료\결과\Ortools\VP_축소\Rolling_Horizon_구간_30\d5000\Penalty_Per_Vehicles\Time_Solver_20\Original\add_15mins\50000\vehicles_50
+50000,60,19124576,54350021,399,178,577,804.564,C:\Users\choih\Desktop\연구\PDPTW\자료\결과\Ortools\VP_축소\Rolling_Horizon_구간_30\d5000\Penalty_Per_Vehicles\Time_Solver_20\Original\add_15mins\50000\vehicles_60
+50000,70,17426148,54019751,414,163,577,803.71,C:\Users\choih\Desktop\연구\PDPTW\자료\결과\Ortools\VP_축소\Rolling_Horizon_구간_30\d5000\Penalty_Per_Vehicles\Time_Solver_20\Original\add_15mins\50000\vehicles_70
+50000,80,16323904,54302606,426,151,577,805.852,C:\Users\choih\Desktop\연구\PDPTW\자료\결과\Ortools\VP_축소\Rolling_Horizon_구간_30\d5000\Penalty_Per_Vehicles\Time_Solver_20\Original\add_15mins\50000\vehicles_80
+50000,90,19329677,55413410,397,180,577,805.869,C:\Users\choih\Desktop\연구\PDPTW\자료\결과\Ortools\VP_축소\Rolling_Horizon_구간_30\d5000\Penalty_Per_Vehicles\Time_Solver_20\Original\add_15mins\50000\vehicles_90
+50000,100,17864135,54183843,411,166,577,805.366,C:\Users\choih\Desktop\연구\PDPTW\자료\결과\Ortools\VP_축소\Rolling_Horizon_구간_30\d5000\Penalty_Per_Vehicles\Time_Solver_20\Original\add_15mins\50000\vehicles_100
+50000,110,15634964,52028844,427,150,577,805.371,C:\Users\choih\Desktop\연구\PDPTW\자료\결과\Ortools\VP_축소\Rolling_Horizon_구간_30\d5000\Penalty_Per_Vehicles\Time_Solver_20\Original\add_15mins\50000\vehicles_110
+50000,120,14480723,52289956,438,139,577,805.605,C:\Users\choih\Desktop\연구\PDPTW\자료\결과\Ortools\VP_축소\Rolling_Horizon_구간_30\d5000\Penalty_Per_Vehicles\Time_Solver_20\Original\add_15mins\50000\vehicles_120
+50000,130,15195860,52891743,433,144,577,806.772,C:\Users\choih\Desktop\연구\PDPTW\자료\결과\Ortools\VP_축소\Rolling_Horizon_구간_30\d5000\Penalty_Per_Vehicles\Time_Solver_20\Original\add_15mins\50000\vehicles_130
+50000,140,13909708,52857122,442,135,577,806.163,C:\Users\choih\Desktop\연구\PDPTW\자료\결과\Ortools\VP_축소\Rolling_Horizon_구간_30\d5000\Penalty_Per_Vehicles\Time_Solver_20\Original\add_15mins\50000\vehicles_140
