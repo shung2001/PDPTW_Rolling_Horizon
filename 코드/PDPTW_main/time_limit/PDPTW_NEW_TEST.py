@@ -18,27 +18,27 @@ from ortools.constraint_solver import pywrapcp, routing_enums_pb2
 
 PROJECT_DIR = Path(__file__).resolve().parents[3]
 INPUT_DIR = PROJECT_DIR / "자료" / "기초자료"
-REQUEST_PATH = INPUT_DIR / "finalDemand_v5" / "축소" / "d5000_s01.csv"
+REQUEST_PATH = INPUT_DIR / "finalDemand_v5" / "축소" / "d5000_s01_add_15_mins.csv"
 DISTANCE_MATRIX_PATH = INPUT_DIR / "distance_matrix_km.csv"
 TIME_MATRIX_PATH = INPUT_DIR / "flight_time_matrix_min_remove_fuel.csv"
 NODE_REFERENCE_PATH = INPUT_DIR / "vp_reference_축소.csv"
 TRANSPORTATION_MATRIX_PATH = PROJECT_DIR / "자료" / "결과" / "차량_교통수단" /"public_transit_time_matrix_tmap_min.csv"
 TRANSPORTATION_MATRIX_COST = PROJECT_DIR / "자료" / "결과" / "차량_교통수단" / "public_transit_fare_matrix_tmap_krw.csv"
-OUTPUT_DIR = PROJECT_DIR / "자료" / "결과" / "Ortools" / "VP_축소" /"Rolling_Horizon_구간_30" / "d5000" / "Penalty_Per_Vehicles" / "Time_Solver_20" / "Original" / "add_6mins" 
+OUTPUT_DIR = PROJECT_DIR / "자료" / "결과" / "Ortools" / "VP_축소" /"Rolling_Horizon_구간_30" / "d5000" / "Penalty_Per_Vehicles" / "Time_Solver_480" / "Original" / "add_6mins" 
 
 BASE_TIME = "05:40"
 END_TIME = "19:16"
-NUM_VEHICLES = 176
+NUM_VEHICLES = 100
 VEHICLE_CAPACITY = 4
 DEPOT_ROUTE_NODE_IDS = list(range(1, 11))
 ROLLING_HORIZON_MINUTES = 30
 REOPTIMIZATION_INTERVAL_MINUTES = 20
-TIME_LIMIT_SECONDS = 20
+TIME_LIMIT_SECONDS = 480
 
 SERVICE_TIME_MINUTES = 3
 BOARDING_CHARGE_MINUTES = 2
 TAXI_TIME_MINUTES = 1
-REVENUE = 100000
+REVENUE = 130000
 HOVERING_LIFT_OFF_COST = 18404
 MIN_PER_OPERATING = 1247
 MIN_PER_MECHANIC = 9140

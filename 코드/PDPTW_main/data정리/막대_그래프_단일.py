@@ -24,13 +24,14 @@ DEFAULT_DATA_DIR = (
     "자료" / 
     "결과" / 
     "Ortools" / 
+    "VP_축소" /
     "Rolling_Horizon_구간_30" / 
     "d5000" / 
     "Penalty_Per_Vehicles" / 
-    "Time_Solver_120" / 
-    "add_6mins_penalty_수정_2" /
-    "Original")
-
+    "Time_Solver_20" / 
+    "Original" /
+    "add_15mins" /
+    "single_100")
 
 SUMMARY_NAME = "vehicle_summary.csv"
 LEGS_NAME = "vehicle_route_legs.csv"

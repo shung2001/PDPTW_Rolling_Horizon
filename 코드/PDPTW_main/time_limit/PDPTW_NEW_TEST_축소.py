@@ -24,16 +24,16 @@ TIME_MATRIX_PATH = INPUT_DIR / "flight_time_matrix_min_remove_fuel.csv"
 NODE_REFERENCE_PATH = INPUT_DIR / "vp_reference_축소.csv"
 TRANSPORTATION_MATRIX_PATH = PROJECT_DIR / "자료" / "결과" / "차량_교통수단" /"public_transit_time_matrix_tmap_min.csv"
 TRANSPORTATION_MATRIX_COST = PROJECT_DIR / "자료" / "결과" / "차량_교통수단" / "public_transit_fare_matrix_tmap_krw.csv"
-OUTPUT_DIR = PROJECT_DIR / "자료" / "결과" / "Ortools" / "VP_축소" /"Rolling_Horizon_구간_30" / "d5000" / "Penalty_Per_Vehicles" / "Time_Solver_20" / "Original" / "add_15mins" / "single" 
+OUTPUT_DIR = PROJECT_DIR / "자료" / "결과" / "Ortools" / "VP_축소" /"Rolling_Horizon_구간_30" / "d5000" / "Penalty_Per_Vehicles" / "Time_Solver_600" / "Original" / "add_15mins" / "single" 
 
 BASE_TIME = "05:40"
 END_TIME = "19:16"
-NUM_VEHICLES = 176
+NUM_VEHICLES = 60
 VEHICLE_CAPACITY = 4
 DEPOT_ROUTE_NODE_IDS = None  # Use all vp_id values from the selected node reference.
 ROLLING_HORIZON_MINUTES = 30
 REOPTIMIZATION_INTERVAL_MINUTES = 20
-TIME_LIMIT_SECONDS = 120
+TIME_LIMIT_SECONDS = 600
 
 SERVICE_TIME_MINUTES = 3
 BOARDING_CHARGE_MINUTES = 2
