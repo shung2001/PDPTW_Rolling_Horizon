@@ -45,16 +45,14 @@ DEFAULT_DATA_DIR = (
     "자료" / 
     "결과" / 
     "Ortools" / 
+    "VP_기존" /
     "Rolling_Horizon_구간_30" / 
-    "d5000" / 
-    "Penalty_Per_Vehicles" / 
-    "Time_Solver_20" / 
-    "add_6mins_penalty_수정_2" /
-    "Original"
+    "d3000" /
+    "single" 
 )
 
-DEFAULT_REVENUE_START = 50_000
-DEFAULT_REVENUE_STOP = 200_000
+DEFAULT_REVENUE_START = 110_000
+DEFAULT_REVENUE_STOP = 130_000
 DEFAULT_REVENUE_STEP = 10_000
 
 SUMMARY_NAME = "vehicle_summary.csv"

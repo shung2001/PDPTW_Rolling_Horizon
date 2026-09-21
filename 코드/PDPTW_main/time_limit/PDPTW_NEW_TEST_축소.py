@@ -943,6 +943,7 @@ def main() -> None:
             print("=" * 72, flush=True)
 
         seen_batch_ids.update(active_batch_ids)
+        print(f"[RH 진행] {rh_index}/{total_horizons} 완료 ({100 * rh_index / total_horizons:.1f}%) | 이번 RH {runtime:.1f}초 | 총 경과 {time.perf_counter() - started:.1f}초", flush=True)
     update_batch_states(batches, simulation_end + ROLLING_HORIZON_MINUTES)
     for batch in batches.values():
         if batch.status == "Pending":

@@ -20,18 +20,18 @@ from matplotlib.ticker import StrMethodFormatter
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_DATA_DIR = (
-    REPOSITORY_ROOT/
-    "자료" / 
-    "결과" / 
-    "Ortools" / 
-    "VP_축소" /
-    "Rolling_Horizon_구간_30" / 
-    "d5000" / 
-    "Penalty_Per_Vehicles" / 
-    "Time_Solver_20" / 
-    "Original" /
-    "add_15mins" /
-    "single_100")
+    REPOSITORY_ROOT
+    / "자료"
+    / "결과"
+    / "Ortools"
+    / "VP_기존"
+    / "Rolling_Horizon_구간_30"
+    / "d5000"
+    / "single"
+    / "130000"
+    / "Original"
+    / "add_6mins"
+    / "60")
 
 SUMMARY_NAME = "vehicle_summary.csv"
 LEGS_NAME = "vehicle_route_legs.csv"

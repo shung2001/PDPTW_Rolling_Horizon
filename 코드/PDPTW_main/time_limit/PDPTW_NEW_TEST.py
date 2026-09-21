@@ -17,28 +17,28 @@ from ortools.constraint_solver import pywrapcp, routing_enums_pb2
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[3]
+NUM_VEHICLES = 170
 INPUT_DIR = PROJECT_DIR / "자료" / "기초자료"
-REQUEST_PATH = INPUT_DIR / "finalDemand_v5" / "축소" / "d5000_s01_add_15_mins.csv"
+REQUEST_PATH = INPUT_DIR / "finalDemand_v5" / "finalDemand_v5" / "d5000_s01_extra_6mins.csv"
 DISTANCE_MATRIX_PATH = INPUT_DIR / "distance_matrix_km.csv"
 TIME_MATRIX_PATH = INPUT_DIR / "flight_time_matrix_min_remove_fuel.csv"
-NODE_REFERENCE_PATH = INPUT_DIR / "vp_reference_축소.csv"
+NODE_REFERENCE_PATH = INPUT_DIR / "vp_reference.csv"
 TRANSPORTATION_MATRIX_PATH = PROJECT_DIR / "자료" / "결과" / "차량_교통수단" /"public_transit_time_matrix_tmap_min.csv"
 TRANSPORTATION_MATRIX_COST = PROJECT_DIR / "자료" / "결과" / "차량_교통수단" / "public_transit_fare_matrix_tmap_krw.csv"
-OUTPUT_DIR = PROJECT_DIR / "자료" / "결과" / "Ortools" / "VP_축소" /"Rolling_Horizon_구간_30" / "d5000" / "Penalty_Per_Vehicles" / "Time_Solver_480" / "Original" / "add_6mins" 
+OUTPUT_DIR = PROJECT_DIR / "자료" / "결과" / "Ortools" / "VP_기존" /"Rolling_Horizon_구간_30" / "d5000" / "single" / "110000" /"Original" / "add_6mins" / str(NUM_VEHICLES)
 
 BASE_TIME = "05:40"
 END_TIME = "19:16"
-NUM_VEHICLES = 100
 VEHICLE_CAPACITY = 4
 DEPOT_ROUTE_NODE_IDS = list(range(1, 11))
 ROLLING_HORIZON_MINUTES = 30
 REOPTIMIZATION_INTERVAL_MINUTES = 20
-TIME_LIMIT_SECONDS = 480
+TIME_LIMIT_SECONDS = 600
 
 SERVICE_TIME_MINUTES = 3
 BOARDING_CHARGE_MINUTES = 2
 TAXI_TIME_MINUTES = 1
-REVENUE = 130000
+REVENUE = 110000
 HOVERING_LIFT_OFF_COST = 18404
 MIN_PER_OPERATING = 1247
 MIN_PER_MECHANIC = 9140
@@ -886,14 +886,22 @@ def main() -> None:
         routes: list[dict[str, Any]] = []
         if active:
             if LOG_ROLLING_HORIZON:
-                print("Solver 실행 시작...", flush=True)
+                print("RH 모델 생성 시작...", flush=True)
             tick = time.perf_counter()
             """변경 시작: 중간 RH는 Open End, 마지막 처리 가능 RH는 최초 home_depot을 End로 설정"""
             return_to_home = he >= simulation_end
             model = build_horizon_model(active, batches, vehicles, distance, flight_time, fare_matrix, hs, he, maximum_max_wait, return_to_home)
             """변경 끝"""
+            solve_started = time.perf_counter()
+            if LOG_ROLLING_HORIZON:
+                print(f"RH 모델 생성 완료       : {solve_started - tick:.3f} sec", flush=True)
+                print(f"Solver 실행 시작 (제한 {TIME_LIMIT_SECONDS}초)...", flush=True)
             solution = solve_horizon(model)
-            runtime = time.perf_counter() - tick
+            solve_finished = time.perf_counter()
+            runtime = solve_finished - tick
+            if LOG_ROLLING_HORIZON:
+                print(f"Solver 반환             : {solve_finished - solve_started:.3f} sec (status={model.routing.status()})", flush=True)
+                print("경로 추출 및 Commit 시작...", flush=True)
             routes, selected = extract_routes(model, solution, vehicles)
             objective = None if solution is None else int(solution.ObjectiveValue())
             committed = commit_routes(routes, vehicles, distance, flight_time, nodes, commit_end, logs, batches)
